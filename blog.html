@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Blog • HablaHistoria</title>
+  <link rel="icon" href="logo.jpg" type="image/x-icon">
+  <style>
+    :root {
+      --bg:#ffffff; 
+      --card:#fffaf0; 
+      --input:#ffffff; 
+      --border:#ffbf69; 
+      --text:#000000; 
+      --primary:#ff9f1c;
+    }
+    body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    header {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:14px 16px; background:#ff9f1c; color:#fff;
+      border-bottom:2px solid #e67e00; position:sticky; top:0; z-index:10
+    }
+    header h1 { font-size:18px; margin:0; color:#fff }
+    .btn {
+      background:var(--primary); color:#fff; border:none;
+      border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer
+    }
+    .btn.ghost {
+      background:transparent; border:1px solid var(--border); color:#e67e00
+    }
+    .container { max-width:900px; margin:24px auto; padding:0 16px}
+    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px }
+    .stack { display:grid; gap:12px }
+    input, textarea, select {
+      width: 400px; padding:12px; border-radius:12px; margin-bottom: 4px;
+      border:1px solid var(--border); background:var(--input); color:#000; outline:none
+    }
+    textarea { min-height:110px; resize:vertical }
+    .grid { display:grid; gap:12px }
+    @media(min-width:720px) { .grid.cols-2 { grid-template-columns:1fr 1fr } }
+    .post {
+      background:#fff; border:1px solid var(--border);
+      border-radius:12px; padding:14px; transition:all 0.3s ease-in-out;
+      position:relative;
+    }
+    .post h3 { margin:0 0 6px 0; color:#e67e00; cursor:pointer }
+    .meta { opacity:.8; font-size:12px; margin-bottom:6px }
+    .media img, .media video, .media audio {
+      max-width:100%; border-radius:10px; margin-top:8px; display:block
+    }
+    .tag {
+      display:inline-block; background:#ffefcc;
+      border:1px solid #ffbf69; padding:4px 8px;
+      border-radius:999px; font-size:12px; margin-right:6px; margin-bottom:1.4px
+    }
+    .muted { opacity:.7 }
+    .empty {
+      border:1px dashed var(--border); border-radius:12px;
+      padding:18px; text-align:center
+    }
+    .content-collapsed {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .content-expanded {
+      max-height: 1000px; /* grande para permitir expansión */
+      transition: max-height 0.5s ease;
+    }
+    .toggle-content-btn {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 6px 0;
+      font-size: 14px;
+      margin-top: 8px;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>📝 Habla Historia</h1>
+  <div class="actions">
+    <button class="btn" id="btnLogout">Cerrar sesión</button>
+  </div>
+</header>
+
+<div class="container stack">
+  <!-- Panel Docente -->
+  <div id="teacherPanel" class="card stack" style="display:none">
+    <h2 style="margin:0;color:#e67e00">Publicar (docente)</h2>
+    <div class="grid cols-2">
+      <input id="postTitle" placeholder="Título" />
+      <select id="postGrades" multiple>
+        <option value="7A">7° "A"</option>
+        <option value="7B">7° "B"</option>
+        <option value="8A">8° "A"</option>
+        <option value="8B">8° "B"</option>
+        <option value="9A">9° "A"</option>
+        <option value="9B">9° "B"</option>
+      </select>
+    </div>
+    <textarea id="postContent" placeholder="Contenido..."></textarea>
+    <div class="stack">
+      <label for="postFiles" class="muted">Enlaces (una URL por línea) — admite imágenes, video o audio</label>
+      <textarea id="postFiles" placeholder="https://...jpg
+https://...mp4
+https://...mp3"></textarea>
+    </div>
+    <div>
+      <button class="btn" id="btnPublish">Publicar</button>
+    </div>
+  </div>
+
+  <!-- Lista de publicaciones -->
+  <div id="postsWrap" class="stack">
+    <div id="infoBox" class="empty muted">Cargando publicaciones…</div>
+    <div id="postsList" class="stack"></div>
+  </div>
+</div>
+
+<script type="module">
+  import {
+    initializeApp
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import {
+    getAuth,
+    onAuthStateChanged,
+    signOut
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import {
+    getFirestore,
+    doc,
+    getDoc,
+    collection,
+    addDoc,
+    getDocs,
+    query,
+    where,
+    orderBy,
+    serverTimestamp,
+    deleteDoc
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB0MfByHYHikrECUDVM2QenIsLiLmoS_FM",
+    authDomain: "hablahistoria-802fd.firebaseapp.com",
+    projectId: "hablahistoria-802fd",
+    storageBucket: "hablahistoria-802fd.appspot.com",
+    messagingSenderId: "322467465610",
+    appId: "1:322467465610:web:98da756bc6d80f440a6073",
+  };
+
+  const TEACHER_EMAILS = ["hey.junda@gmail.com", "yesenia.lisseth.flores@clases.edu.sv"];
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const teacherPanel = document.getElementById('teacherPanel');
+  const postsList = document.getElementById('postsList');
+  const infoBox = document.getElementById('infoBox');
+
+  let currentUser = null;
+  let userGrade = null;
+
+  function parseUrls(raw) {
+    return raw.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+
+function renderMedia(url) {
+  const u = url.toLowerCase();
+  if (u.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
+    return `<img src="${url}" alt="Imagen relacionada" />`;
+  }
+  if (u.match(/\.(mp4|webm|ogg)$/)) {
+    return `<video controls src="${url}"></video>`;
+  }
+  if (u.match(/\.(mp3|wav|ogg)$/)) {
+    return `<audio controls src="${url}"></audio>`;
+  }
+  // Si no es un archivo media, muestra el link como texto clickeable
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+}
+
+
+  function fmtDate(d) {
+    try {
+      const date = d?.toDate ? d.toDate() : new Date(d);
+      return date.toLocaleString();
+    } catch {
+      return "";
+    }
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      location.href = "login.html";
+      return;
+    }
+    currentUser = user;
+    if (TEACHER_EMAILS.includes(user.email)) teacherPanel.style.display = 'block';
+    userGrade = await getUserGrade(user.uid) || localStorage.getItem('gradoUsuario');
+    await loadPosts();
+  });
+
+  async function getUserGrade(uid) {
+    try {
+      const snap = await getDoc(doc(db, "usuarios", uid));
+      return snap.exists() ? snap.data().grado : null;
+    } catch {
+      return null;
+    }
+  }
+
+  document.getElementById('btnPublish')?.addEventListener('click', async () => {
+    const title = document.getElementById('postTitle').value.trim();
+    const content = document.getElementById('postContent').value.trim();
+    const files = parseUrls(document.getElementById('postFiles').value);
+    const gradesSel = Array.from(document.getElementById('postGrades').selectedOptions).map(o => o.value);
+    if (!title || !content || !gradesSel.length) {
+      alert("Completa todos los campos.");
+      return;
+    }
+    try {
+      await addDoc(collection(db, "posts"), {
+        title,
+        content,
+        allowedGrades: gradesSel,
+        files,
+        authorUid: currentUser.uid,
+        authorEmail: currentUser.email,
+        createdAt: serverTimestamp()
+      });
+      document.getElementById('postTitle').value = "";
+      document.getElementById('postContent').value = "";
+      document.getElementById('postFiles').value = "";
+      Array.from(document.getElementById('postGrades').options).forEach(o => o.selected = false);
+      await loadPosts();
+      alert("Publicado ✅");
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo publicar.");
+    }
+  });
+
+  async function loadPosts() {
+    postsList.innerHTML = "";
+    infoBox.style.display = 'block';
+    infoBox.textContent = "Cargando…";
+    try {
+      let snap;
+      if (TEACHER_EMAILS.includes(currentUser.email)) {
+        snap = await getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc")));
+      } else {
+        if (!userGrade) {
+          infoBox.textContent = "No encontramos tu grado.";
+          return;
+        }
+        snap = await getDocs(query(collection(db, "posts"), where("allowedGrades", "array-contains", userGrade)));
+      }
+
+      const posts = [];
+      snap.forEach(d => posts.push({ id: d.id, ...d.data() }));
+      posts.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      infoBox.style.display = posts.length ? 'none' : 'block';
+      infoBox.textContent = posts.length ? "" : "No hay publicaciones.";
+
+      for (const p of posts) {
+        const el = document.createElement('div');
+        el.className = "post";
+
+        // Título y toggle para contenido
+        const toggle = document.createElement('h3');
+        toggle.textContent = p.title;
+        toggle.style.cursor = "pointer";
+
+        // Contenido que se puede mostrar/ocultar (texto + media)
+        const contentDiv = document.createElement('div');
+        contentDiv.className = "content-collapsed";
+        contentDiv.innerHTML = `
+          <p>${(p.content || "").replace(/\n/g, "<br>")}</p>
+          <div class="media">${(p.files || []).map(renderMedia).join("")}</div>`;
+
+        // Botón para mostrar/ocultar descripción y links
+        const toggleContentBtn = document.createElement('button');
+        toggleContentBtn.className = "toggle-content-btn";
+        toggleContentBtn.textContent = "Mostrar descripción y enlaces";
+        toggleContentBtn.onclick = () => {
+          const isCollapsed = contentDiv.classList.contains("content-collapsed");
+          if (isCollapsed) {
+            contentDiv.classList.remove("content-collapsed");
+            contentDiv.classList.add("content-expanded");
+            toggleContentBtn.textContent = "Ocultar descripción y enlaces";
+          } else {
+            contentDiv.classList.add("content-collapsed");
+            contentDiv.classList.remove("content-expanded");
+            toggleContentBtn.textContent = "Mostrar descripción y enlaces";
+          }
+        };
+
+        const meta = document.createElement('div');
+        meta.className = "meta muted";
+        meta.innerHTML = `${p.authorEmail || ""} • ${fmtDate(p.createdAt)}<br>
+          ${(p.allowedGrades || []).map(g => `<span class="tag">${g}</span>`).join(" ")}`;
+
+        // Armado del post
+        el.appendChild(toggle);
+        el.appendChild(meta);
+        el.appendChild(toggleContentBtn);
+        el.appendChild(contentDiv);
+
+        // Botón eliminar para docentes
+        if (TEACHER_EMAILS.includes(currentUser.email)) {
+          const deleteBtn = document.createElement("button");
+          deleteBtn.textContent = "🗑 Eliminar";
+          deleteBtn.className = "btn ghost";
+          deleteBtn.style.marginTop = "10px";
+          deleteBtn.onclick = async () => {
+            const confirmDelete = confirm(`¿Eliminar publicación: "${p.title}"?`);
+            if (!confirmDelete) return;
+            try {
+              await deleteDoc(doc(db, "posts", p.id));
+              await loadPosts();
+              alert("Publicación eliminada ✅");
+            } catch (err) {
+              console.error(err);
+              alert("Error al eliminar.");
+            }
+          };
+          el.appendChild(deleteBtn);
+        }
+
+        postsList.appendChild(el);
+      }
+    } catch (err) {
+      console.error(err);
+      infoBox.textContent = "Error cargando publicaciones.";
+    }
+  }
+
+  document.getElementById('btnLogout').addEventListener('click', async () => {
+    await signOut(auth);
+    location.href = "login.html";
+  });
+</script>
+</body>
+</html>
