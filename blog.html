@@ -288,17 +288,17 @@ function renderMedia(url) {
         // Botón para mostrar/ocultar descripción y links
         const toggleContentBtn = document.createElement('button');
         toggleContentBtn.className = "toggle-content-btn";
-        toggleContentBtn.textContent = "Mostrar descripción y enlaces";
+        toggleContentBtn.textContent = "Mostrar";
         toggleContentBtn.onclick = () => {
           const isCollapsed = contentDiv.classList.contains("content-collapsed");
           if (isCollapsed) {
             contentDiv.classList.remove("content-collapsed");
             contentDiv.classList.add("content-expanded");
-            toggleContentBtn.textContent = "Ocultar descripción y enlaces";
+            toggleContentBtn.textContent = "Ocultar";
           } else {
             contentDiv.classList.add("content-collapsed");
             contentDiv.classList.remove("content-expanded");
-            toggleContentBtn.textContent = "Mostrar descripción y enlaces";
+            toggleContentBtn.textContent = "Mostrar";
           }
         };
 
@@ -344,7 +344,7 @@ function renderMedia(url) {
 
   document.getElementById('btnLogout').addEventListener('click', async () => {
     await signOut(auth);
-    location.href = "login.html";
+    location.href = "index.html";
   });
 </script>
 </body>
