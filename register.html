@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crear cuenta • Hug-Oh</title>
+<style>
+  body { margin:0; font-family:system-ui,sans-serif; background:#0b0f19; color:#e8ecff; display:flex; justify-content:center; align-items:center; min-height:100vh;}
+  .card { background:#12182a; padding:32px; border-radius:16px; width:100%; max-width:400px; box-shadow:0 0 20px rgba(0,0,0,0.5);}
+  h2{text-align:center;margin-bottom:16px;}
+  input, select{width:93%;padding:12px;border-radius:12px;border:1px solid #2f3a5a;background:#0a0e1c;color:#fff;margin-bottom:12px;}
+  button{width:100%;padding:12px;border-radius:12px;border:none;background:#6aa4ff;color:#fff;cursor:pointer;font-weight:600;margin-bottom:12px;}
+  .link-btn{background:none;border:none;color:#6aa4ff;cursor:pointer;text-decoration:underline;padding:0;font-size:14px;}
+  .alert{display:none;padding:10px;border-radius:12px;text-align:center;margin-bottom:12px;}
+  .alert.success{background:rgba(34,197,94,0.2);color:#16a34a;}
+  .alert.error{background:rgba(239,68,68,0.2);color:#b91c1c;}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2>Crear cuenta</h2>
+  <div id="regMsg" class="alert"></div>
+  <input type="text" id="regName" placeholder="Nombre completo" required>
+  <input type="text" id="regNIE" placeholder="Número de NIE" required>
+  <select id="regGrade" required>
+    <option value="">Selecciona tu grado</option>
+    <option value="7A">7A</option>
+    <option value="7B">7B</option>
+    <option value="8A">8A</option>
+    <option value="8B">8B</option>
+    <option value="9A">9A</option>
+    <option value="9B">9B</option>
+  </select>
+  <input type="email" id="regEmail" placeholder="Correo" required>
+  <input type="password" id="regPass" placeholder="Contraseña" required>
+  <button id="btnRegister">Crear cuenta</button>
+  <button class="link-btn" onclick="location.href='login.html'">Volver al login</button>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, createUserWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBTARrZlvWOsld1kzdiHzE3_U9hdieHfvU",
+  authDomain: "hug-oh.firebaseapp.com",
+  projectId: "hug-oh",
+  appId: "1:849653738783:web:16fb8b60d04645cb90542a",
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+await setPersistence(auth, browserLocalPersistence);
+
+const regMsg = document.getElementById('regMsg');
+
+document.getElementById('btnRegister').addEventListener('click', async ()=>{
+  regMsg.style.display='none';
+  const name = document.getElementById('regName').value.trim();
+  const nie = document.getElementById('regNIE').value.trim();
+  const grade = document.getElementById('regGrade').value;
+  const email = document.getElementById('regEmail').value.trim();
+  const pass = document.getElementById('regPass').value;
+
+  if(!name || !nie || !grade){
+    regMsg.textContent='Por favor, completa todos los campos.';
+    regMsg.className='alert error';
+    regMsg.style.display='block';
+    return;
+  }
+
+  try{
+    const {user} = await createUserWithEmailAndPassword(auth,email,pass);
+    await updateProfile(user,{displayName:name});
+    // Guardar NIE y grado en Firestore
+    await setDoc(doc(db, "usuarios", user.uid), {
+      nombre: name,
+      nie: nie,
+      grado: grade,
+      email: email,
+      creado: new Date()
+    });
+
+    // Guardar temporalmente los datos en localStorage para mostrarlos en bienvenida.html
+    localStorage.setItem("nombreUsuario", name);
+    localStorage.setItem("gradoUsuario", grade);
+
+    // Redirigir a página de bienvenida
+    window.location.href = "bienvenida.html";
+
+  }catch(err){
+    const msg = {
+      'auth/email-already-in-use':'Ese correo ya tiene cuenta.',
+      'auth/invalid-email':'Correo inválido.',
+      'auth/weak-password':'Contraseña debe tener 6+ caracteres.'
+    }[err.code]||'Ocurrió un error.';
+    regMsg.textContent=msg; 
+    regMsg.className='alert error'; 
+    regMsg.style.display='block';
+  }
+});
+</script>
+</body>
+</html>
