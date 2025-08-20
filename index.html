@@ -64,7 +64,7 @@
       transition: max-height 0.3s ease;
     }
     .content-expanded {
-      max-height: 1000px; /* grande para permitir expansión */
+      max-height: 1000px;
       transition: max-height 0.5s ease;
     }
     .toggle-content-btn {
@@ -78,6 +78,29 @@
       margin-top: 8px;
       text-align: left;
     }
+    /* Estilos para previews */
+    .link-preview {
+      border: 1px solid var(--border);
+      padding: 8px;
+      border-radius: 10px;
+      margin-top: 6px;
+      background: #fffef8;
+    }
+    .link-preview img {
+      max-width: 100%;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+    .link-preview a {
+      color: var(--primary);
+      font-weight: 600;
+      text-decoration: none;
+      word-break: break-all;
+    }
+    /* Comentarios */
+    .comments { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .comment { padding: 4px 0; font-size: 14px; }
+    .comments-list { margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -108,7 +131,8 @@
       <label for="postFiles" class="muted">Enlaces (una URL por línea) — admite imágenes, video o audio</label>
       <textarea id="postFiles" placeholder="https://...jpg
 https://...mp4
-https://...mp3"></textarea>
+https://...mp3
+https://...link"></textarea>
     </div>
     <div>
       <button class="btn" id="btnPublish">Publicar</button>
@@ -155,6 +179,7 @@ https://...mp3"></textarea>
   };
 
   const TEACHER_EMAILS = ["hey.junda@gmail.com", "yesenia.lisseth.flores@clases.edu.sv"];
+  const LINK_API_KEY = "a30ad1652095af5a53163f76aec86711"; // 👉 consigue tu API key gratis en linkpreview.net
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
@@ -171,21 +196,33 @@ https://...mp3"></textarea>
     return raw.split('\n').map(s => s.trim()).filter(Boolean);
   }
 
-function renderMedia(url) {
-  const u = url.toLowerCase();
-  if (u.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-    return `<img src="${url}" alt="Imagen relacionada" />`;
-  }
-  if (u.match(/\.(mp4|webm|ogg)$/)) {
-    return `<video controls src="${url}"></video>`;
-  }
-  if (u.match(/\.(mp3|wav|ogg)$/)) {
-    return `<audio controls src="${url}"></audio>`;
-  }
-  // Si no es un archivo media, muestra el link como texto clickeable
-  return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-}
+  // Previsualización de links con API externa
+  async function renderMedia(url) {
+    const u = url.toLowerCase();
+    if (u.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
+      return `<img src="${url}" alt="Imagen relacionada" />`;
+    }
+    if (u.match(/\.(mp4|webm|ogg)$/)) {
+      return `<video controls src="${url}"></video>`;
+    }
+    if (u.match(/\.(mp3|wav|ogg)$/)) {
+      return `<audio controls src="${url}"></audio>`;
+    }
 
+    // Fetch a API LinkPreview
+    try {
+      const res = await fetch(`https://api.linkpreview.net/?key=${LINK_API_KEY}&q=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      return `
+        <div class="link-preview">
+          ${data.image ? `<img src="${data.image}" alt="preview"/>` : ""}
+          <a href="${data.url}" target="_blank">${data.title || url}</a>
+          <p>${data.description || ""}</p>
+        </div>`;
+    } catch (e) {
+      return `<div class="link-preview"><a href="${url}" target="_blank">${url}</a></div>`;
+    }
+  }
 
   function fmtDate(d) {
     try {
@@ -273,19 +310,20 @@ function renderMedia(url) {
         const el = document.createElement('div');
         el.className = "post";
 
-        // Título y toggle para contenido
         const toggle = document.createElement('h3');
         toggle.textContent = p.title;
         toggle.style.cursor = "pointer";
 
-        // Contenido que se puede mostrar/ocultar (texto + media)
         const contentDiv = document.createElement('div');
         contentDiv.className = "content-collapsed";
+
+        // renderMedia ahora es async → procesamos cada archivo
+        const mediaHtmls = await Promise.all((p.files || []).map(renderMedia));
+
         contentDiv.innerHTML = `
           <p>${(p.content || "").replace(/\n/g, "<br>")}</p>
-          <div class="media">${(p.files || []).map(renderMedia).join("")}</div>`;
+          <div class="media">${mediaHtmls.join("")}</div>`;
 
-        // Botón para mostrar/ocultar descripción y links
         const toggleContentBtn = document.createElement('button');
         toggleContentBtn.className = "toggle-content-btn";
         toggleContentBtn.textContent = "Mostrar";
@@ -307,13 +345,51 @@ function renderMedia(url) {
         meta.innerHTML = `${p.authorEmail || ""} • ${fmtDate(p.createdAt)}<br>
           ${(p.allowedGrades || []).map(g => `<span class="tag">${g}</span>`).join(" ")}`;
 
-        // Armado del post
         el.appendChild(toggle);
         el.appendChild(meta);
         el.appendChild(toggleContentBtn);
         el.appendChild(contentDiv);
 
-        // Botón eliminar para docentes
+        // Comentarios
+        const commentsDiv = document.createElement("div");
+        commentsDiv.className = "comments";
+        const commentsList = document.createElement("div");
+        commentsList.className = "comments-list";
+        commentsDiv.appendChild(commentsList);
+
+        const commentInput = document.createElement("input");
+        commentInput.placeholder = "Escribe un comentario...";
+        commentInput.style.width = "80%";
+
+        const commentBtn = document.createElement("button");
+        commentBtn.textContent = "Responder";
+        commentBtn.className = "btn";
+        commentBtn.style.marginLeft = "6px";
+
+        commentBtn.onclick = async () => {
+          const text = commentInput.value.trim();
+          if (!text) return;
+          try {
+            await addDoc(collection(db, "posts", p.id, "comments"), {
+              text,
+              author: currentUser.email,
+              createdAt: serverTimestamp()
+            });
+            commentInput.value = "";
+            await loadComments(p.id, commentsList);
+          } catch (err) {
+            console.error(err);
+            alert("No se pudo comentar.");
+          }
+        };
+
+        commentsDiv.appendChild(commentInput);
+        commentsDiv.appendChild(commentBtn);
+        el.appendChild(commentsDiv);
+
+        await loadComments(p.id, commentsList);
+
+        // Botón eliminar solo para docentes
         if (TEACHER_EMAILS.includes(currentUser.email)) {
           const deleteBtn = document.createElement("button");
           deleteBtn.textContent = "🗑 Eliminar";
@@ -339,6 +415,31 @@ function renderMedia(url) {
     } catch (err) {
       console.error(err);
       infoBox.textContent = "Error cargando publicaciones.";
+    }
+  }
+
+  async function loadComments(postId, container) {
+    container.innerHTML = "Cargando comentarios...";
+    try {
+      const snap = await getDocs(query(
+        collection(db, "posts", postId, "comments"),
+        orderBy("createdAt", "asc")
+      ));
+      if (snap.empty) {
+        container.innerHTML = "<p class='muted'>Sin comentarios</p>";
+        return;
+      }
+      container.innerHTML = "";
+      snap.forEach(d => {
+        const c = d.data();
+        const div = document.createElement("div");
+        div.className = "comment";
+        div.innerHTML = `<strong>${c.author}</strong>: ${c.text}`;
+        container.appendChild(div);
+      });
+    } catch (err) {
+      console.error(err);
+      container.innerHTML = "<p class='muted'>Error cargando comentarios</p>";
     }
   }
 
