@@ -108,7 +108,15 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  updateProfile, 
+  setPersistence, 
+  browserLocalPersistence,
+  onAuthStateChanged 
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -133,6 +141,20 @@ async function initAuth() {
   }
 }
 initAuth();
+
+// 🔥 Detectar si ya hay sesión activa
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    const docRef = doc(db, "usuarios", user.uid);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const datos = docSnap.data();
+      localStorage.setItem("nombreUsuario", datos.nombre);
+      localStorage.setItem("gradoUsuario", datos.grado);
+      window.location.href = "index.html";
+    }
+  }
+});
 
 // Cambiar entre login y registro
 window.toggleForms = function(){
