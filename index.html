@@ -31,17 +31,17 @@
       object-fit:cover;
     }
     .btn {
-      background:var(--primary); color:#fff; border:none;
+      background:var(--primary); color:#ffffff; border:none;
       border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer
     }
     .btn.ghost {
       background:transparent; border:1px solid var(--border); color:#e67e00
     }
-    .container { max-width:900px; margin:24px auto; padding:0 16px}
+    .container { max-width:900px; max-height: 400px; margin:24px auto; padding:0 16px}
     .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px }
     .stack { display:grid; gap:12px }
     input, textarea, select {
-      width: 400px; padding:12px; border-radius:12px; margin-bottom: 4px;
+      width: 95%; padding:12px; border-radius:12px; margin-bottom: 4px;
       border:1px solid var(--border); background:var(--input); color:#000; outline:none
     }
     textarea { min-height:110px; resize:vertical }
@@ -110,6 +110,13 @@
     .comments { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
     .comment { padding: 4px 0; font-size: 14px; }
     .comments-list { margin-bottom: 8px; }
+
+    /* === Uploader Cloudinary === */
+    .uploader { border:1px dashed var(--border); max-width: 95%; background:#fff; border-radius:12px; padding:12px }
+    .uploader small { display:block; margin-top:6px }
+    .uploads { display:grid; gap:8px; margin-top:8px }
+    .upload-item { font-size:14px; background:#fffef8; border:1px solid var(--border); border-radius:8px; padding:8px }
+    progress { width:100%; height:10px }
   </style>
 </head>
 <body>
@@ -136,12 +143,20 @@
       </select>
     </div>
     <textarea id="postContent" placeholder="Contenido..."></textarea>
+
+    <!-- === Subida de archivos con Cloudinary === -->
+    <div class="uploader">
+      <strong>Subir archivos (imágenes / video / audio)</strong>
+      <div class="grid cols-2" style="align-items:center">
+        <input id="fileInput" type="file" multiple accept="image/*,video/*,audio/*" />
+        <button class="btn" id="btnUpload">Subir</button>
+      </div>
+      <div id="uploads" class="uploads"></div>
+    </div>
+
     <div class="stack">
-      <label for="postFiles" class="muted">Enlaces (una URL por línea) — admite imágenes, video o audio</label>
-      <textarea id="postFiles" placeholder="https://...jpg
-https://...mp4
-https://...mp3
-https://...link"></textarea>
+      <label for="postFiles" class="muted">Enlaces — admite imágenes, video o audio. (Separalas por linea)</label>
+      <textarea id="postFiles" placeholder="https://...jpg\nhttps://...mp4\nhttps://...mp3\nhttps://...link"></textarea>
     </div>
     <div>
       <button class="btn" id="btnPublish">Publicar</button>
@@ -156,27 +171,9 @@ https://...link"></textarea>
 </div>
 
 <script type="module">
-  import {
-    initializeApp
-  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-  import {
-    getAuth,
-    onAuthStateChanged,
-    signOut
-  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import {
-    getFirestore,
-    doc,
-    getDoc,
-    collection,
-    addDoc,
-    getDocs,
-    query,
-    where,
-    orderBy,
-    serverTimestamp,
-    deleteDoc
-  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { getFirestore, doc, getDoc, collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
   const firebaseConfig = {
     apiKey: "AIzaSyB0MfByHYHikrECUDVM2QenIsLiLmoS_FM",
@@ -190,6 +187,14 @@ https://...link"></textarea>
   const TEACHER_EMAILS = ["hey.junda@gmail.com", "yesenia.lisseth.flores@clases.edu.sv"];
   const LINK_API_KEY = "a30ad1652095af5a53163f76aec86711"; // 👉 consigue tu API key gratis en linkpreview.net
 
+  // === Configuración Cloudinary (REEMPLAZA ESTOS VALORES) ===
+  // 1) Crea un Upload Preset SIN firmar (unsigned) en tu cuenta Cloudinary.
+  // 2) Coloca aquí tu cloud name y el nombre del preset.
+  const CLOUDINARY_CLOUD_NAME = "dzkddfq8b"; // p.ej. "demo"
+  const CLOUDINARY_UPLOAD_PRESET = "unsigned_default"; // p.ej. "unsigned_default"
+  // (Opcional) carpeta destino dentro de Cloudinary
+  const CLOUDINARY_FOLDER = "hablahistoria";
+
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
@@ -198,12 +203,96 @@ https://...link"></textarea>
   const postsList = document.getElementById('postsList');
   const infoBox = document.getElementById('infoBox');
 
+  // Uploader refs
+  const fileInput = document.getElementById('fileInput');
+  const btnUpload = document.getElementById('btnUpload');
+  const uploadsWrap = document.getElementById('uploads');
+  const postFilesTA = document.getElementById('postFiles');
+
   let currentUser = null;
   let userGrade = null;
 
   function parseUrls(raw) {
     return raw.split('\n').map(s => s.trim()).filter(Boolean);
   }
+
+  // === Cloudinary: subida de archivos (unsigned) ===
+  async function uploadToCloudinary(file) {
+    const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    if (CLOUDINARY_FOLDER) fd.append('folder', CLOUDINARY_FOLDER);
+
+    // UI item
+    const item = document.createElement('div');
+    item.className = 'upload-item';
+    item.innerHTML = `<strong>${file.name}</strong><br><progress value="0" max="100"></progress><span class="muted"> Subiendo…</span>`;
+    const progressEl = item.querySelector('progress');
+    const statusEl = item.querySelector('span');
+    uploadsWrap.appendChild(item);
+
+    try {
+      // fetch no expone progreso nativo; usamos xhr para mostrar avance real
+      const res = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', endpoint);
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve(xhr) : reject(new Error(xhr.responseText));
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) progressEl.value = Math.round((e.loaded / e.total) * 100);
+        };
+        xhr.send(fd);
+      });
+
+      const data = JSON.parse(res.responseText);
+      statusEl.textContent = ' Listo ✅';
+      progressEl.value = 100;
+
+      // Agregar URL al textarea (nueva línea)
+      const url = data.secure_url;
+      postFilesTA.value = (postFilesTA.value ? postFilesTA.value + '\n' : '') + url;
+
+      // Vista previa rápida si es imagen
+      if (data.resource_type === 'image') {
+        const img = document.createElement('img');
+        img.src = data.secure_url;
+        img.alt = file.name;
+        img.style.maxWidth = '160px';
+        img.style.borderRadius = '8px';
+        img.style.display = 'block';
+        img.style.marginTop = '6px';
+        item.appendChild(img);
+      }
+
+      return data;
+    } catch (err) {
+      statusEl.textContent = ' Error ❌';
+      console.error('Cloudinary upload error:', err);
+      alert('No se pudo subir: ' + file.name);
+      throw err;
+    }
+  }
+
+  btnUpload?.addEventListener('click', async () => {
+    const files = Array.from(fileInput.files || []);
+    if (!files.length) {
+      alert('Selecciona al menos un archivo.');
+      return;
+    }
+
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_CLOUD_NAME.includes('tu_')) {
+      alert('Configura CLOUDINARY_CLOUD_NAME y CLOUDINARY_UPLOAD_PRESET en el código.');
+      return;
+    }
+
+    for (const f of files) {
+      await uploadToCloudinary(f);
+    }
+
+    // Limpia el input tras subir
+    fileInput.value = '';
+  });
 
   // Previsualización de links con API externa
   async function renderMedia(url) {
@@ -285,6 +374,7 @@ https://...link"></textarea>
       document.getElementById('postContent').value = "";
       document.getElementById('postFiles').value = "";
       Array.from(document.getElementById('postGrades').options).forEach(o => o.selected = false);
+      uploadsWrap.innerHTML = '';
       await loadPosts();
       alert("Publicado ✅");
     } catch (err) {
