@@ -73,8 +73,6 @@
       <div id="messagesWrap" class="messages" aria-live="polite">
         <p class="muted">No hay chat abierto.</p>
       </div>
-
-      <!-- Archivos + Mensajes -->
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
         <div style="display:flex;gap:8px;align-items:center">
           <input id="fileInputChat" type="file" />
@@ -85,19 +83,6 @@
           <button id="btnSend" class="btn">Enviar</button>
         </div>
       </div>
-
-      <!-- Botones de llamadas -->
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button id="btnCall" class="btn">📞 Llamada</button>
-        <button id="btnVideo" class="btn">🎥 Videollamada</button>
-        <button id="btnHangup" class="btn ghost" disabled>❌ Colgar</button>
-      </div>
-
-      <!-- Área de llamada -->
-      <div id="callArea" style="margin-top:12px; display:none; flex-direction:column; gap:8px">
-        <video id="localVideo" autoplay muted playsinline style="width:200px;border-radius:8px;background:#000"></video>
-        <video id="remoteVideo" autoplay playsinline style="width:200px;border-radius:8px;background:#000"></video>
-      </div>
     </div>
   </div>
 </main>
@@ -107,7 +92,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp,
-  doc, onSnapshot, orderBy, updateDoc, setDoc, getDoc, arrayUnion, deleteDoc
+  doc, onSnapshot, orderBy, updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -147,8 +132,6 @@ let currentChatId = null;
 let unsubMessages = null;
 let pendingFiles = [];
 
-// ------------------ CHAT ------------------
-
 function fmtDate(ts){
   try{ const d = ts?.toDate ? ts.toDate() : new Date(ts); return d.toLocaleString(); }catch{ return ''; }
 }
@@ -181,8 +164,6 @@ async function loadMyChats(){
     chatsListEl.appendChild(div);
   });
 }
-
-let unsubCallListener = null;
 
 async function createOrOpenChatWith(input) {
   chatError.textContent = "";
@@ -217,8 +198,6 @@ async function createOrOpenChatWith(input) {
 
 async function openChat(chatId, chatData){
   if (unsubMessages) unsubMessages();
-  if (unsubCallListener) unsubCallListener();
-
   currentChatId = chatId;
   chatTitle.textContent = chatData.participants.filter(e=>e!==currentUser.email).join(', ') || "Chat";
   chatParticipants.textContent = "Participantes: " + chatData.participants.join(', ');
@@ -249,20 +228,6 @@ async function openChat(chatId, chatData){
     });
     messagesWrap.scrollTop = messagesWrap.scrollHeight;
   });
-
-  // Listener de llamada entrante en esta sala/chat
-  const callDocRef = doc(db, "calls", chatId);
-  unsubCallListener = onSnapshot(callDocRef, (snap) => {
-    const data = snap.exists() ? snap.data() : null;
-    // Si hay oferta y no hay pc activo -> notificar
-    if (data?.offer && !pc) {
-      // Usa confirm por simplicidad — en producción podrías mostrar UI más bonita
-      const from = data.offerFrom || "Alguien";
-      if (confirm(`${from} te está llamando. ¿Responder?`)) {
-        answerCall(); // responderá con video por defecto
-      }
-    }
-  });
 }
 
 btnSend.onclick = async ()=>{
@@ -286,13 +251,9 @@ btnUploadFile.onclick = async ()=>{
   if (!f){ chatError.textContent = "Selecciona un archivo"; return; }
   btnUploadFile.disabled = true;
   btnUploadFile.textContent = "Subiendo…";
-  try {
-    const data = await uploadToCloudinary(f);
-    pendingFiles.push(data.secure_url);
-    chatError.textContent = "Archivo listo para enviar.";
-  } catch (e) {
-    chatError.textContent = "Error subiendo archivo.";
-  }
+  const data = await uploadToCloudinary(f);
+  pendingFiles.push(data.secure_url);
+  chatError.textContent = "Archivo listo para enviar.";
   btnUploadFile.disabled = false;
   btnUploadFile.textContent = "Subir";
   fileInputChat.value = '';
@@ -308,148 +269,6 @@ onAuthStateChanged(auth, async (user)=>{
   currentUser = user;
   await loadMyChats();
 });
-
-// ------------------ LLAMADAS (WebRTC) ------------------
-
-const btnCall = document.getElementById("btnCall");
-const btnVideo = document.getElementById("btnVideo");
-const btnHangup = document.getElementById("btnHangup");
-const localVideo = document.getElementById("localVideo");
-const remoteVideo = document.getElementById("remoteVideo");
-const callArea = document.getElementById("callArea");
-
-let pc = null;
-let localStream = null;
-let callDoc = null;
-
-const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-
-async function initMedia(video) {
-  // pide permisos: si video=false -> solo audio
-  localStream = await navigator.mediaDevices.getUserMedia({ video: !!video, audio: true });
-  localVideo.srcObject = localStream;
-}
-
-async function createPeerConnection(chatId) {
-  pc = new RTCPeerConnection(servers);
-
-  // añadir tracks locales
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-  // remote stream
-  pc.ontrack = event => {
-    // puede venir como streams[0]
-    remoteVideo.srcObject = event.streams?.[0] ?? event.streams;
-  };
-
-  // enviar candidatos ICE a Firestore
-  pc.onicecandidate = async (event) => {
-    if (event.candidate) {
-      await setDoc(doc(db, "calls", chatId), {
-        candidates: arrayUnion(event.candidate.toJSON())
-      }, { merge: true });
-    }
-  };
-}
-
-async function startCall(video) {
-  if (!currentChatId) return alert("Selecciona un chat primero");
-  callArea.style.display = "flex";
-  btnHangup.disabled = false;
-
-  try {
-    await initMedia(video);
-    await createPeerConnection(currentChatId);
-
-    callDoc = doc(db, "calls", currentChatId);
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    // opcional: marcar quién llama
-    await setDoc(callDoc, { offer, offerFrom: currentUser.email });
-
-    // escuchar respuesta y candidatos
-    onSnapshot(callDoc, async (snap) => {
-      const data = snap.data();
-      if (!pc) return;
-      if (!pc.currentRemoteDescription && data?.answer) {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-      }
-      if (data?.candidates) {
-        for (const c of data.candidates) {
-          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
-        }
-      }
-    });
-  } catch (e) {
-    console.error("Error iniciando llamada:", e);
-    hangup();
-  }
-}
-
-async function answerCall() {
-  if (!currentChatId) return;
-  callDoc = doc(db, "calls", currentChatId);
-
-  const snap = await getDoc(callDoc);
-  const data = snap.exists() ? snap.data() : null;
-  if (!data?.offer) return;
-
-  callArea.style.display = "flex";
-  btnHangup.disabled = false;
-
-  try {
-    // responder con video ON (por simplicidad). Si quieres solo audio, envia false.
-    await initMedia(true);
-    await createPeerConnection(currentChatId);
-
-    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    await setDoc(callDoc, { answer }, { merge: true });
-
-    onSnapshot(callDoc, async (snap) => {
-      const d = snap.data();
-      if (!pc) return;
-      if (d?.candidates) {
-        for (const c of d.candidates) {
-          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
-        }
-      }
-    });
-  } catch (e) {
-    console.error("Error respondiendo llamada:", e);
-    hangup();
-  }
-}
-
-async function hangup() {
-  try {
-    if (pc) pc.close();
-    pc = null;
-    if (localStream) localStream.getTracks().forEach(t => t.stop());
-    localStream = null;
-    localVideo.srcObject = null;
-    remoteVideo.srcObject = null;
-    callArea.style.display = "none";
-    btnHangup.disabled = true;
-
-    // limpiar documento de señalización para evitar llamadas colgadas
-    if (currentChatId) {
-      const callRef = doc(db, "calls", currentChatId);
-      try { await deleteDoc(callRef); } catch(e){ /* no crítico */ }
-    }
-  } catch(e){
-    console.error("Error colgando:", e);
-  }
-}
-
-// botones
-btnCall.onclick = () => startCall(false); // audio
-btnVideo.onclick = () => startCall(true); // video+audio
-btnHangup.onclick = hangup;
-
 </script>
 </body>
 </html>
