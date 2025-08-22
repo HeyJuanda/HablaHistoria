@@ -1,72 +1,455 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // ========================
-    // Usuarios
-    // ========================
-    match /usuarios/{userId} {
-      // Solo el dueño puede leer/escribir su propio perfil
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Chat Privado • HablaHistoria</title>
+  <link rel="icon" href="logo.jpg" type="image/x-icon">
+  <style>
+    :root{
+      --primary:#ff9f1c; --accent:#e67e00; --bg:#fff; --card:#fffaf0; --border:#ffbf69;
+      --muted:#666;
     }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:#111;
+         height:100vh;display:flex;flex-direction:column}
+    header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+           padding:12px 16px;background:var(--primary);color:#fff}
+    header h1{margin:0;font-size:20px;display:flex;gap:8px;align-items:center}
+    #logo{height:40px;width:auto;border-radius:100%}
+    main.container{flex:1 1 auto;display:flex;flex-direction:column}
+    .layout{flex:1;display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px;overflow:hidden}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;
+          display:flex;flex-direction:column;overflow:hidden;position:relative}
+    .chats-list{flex:1;overflow:auto}
+    .chat-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:8px}
+    .chat-item.active{background:#fff2d9;border:1px solid var(--accent)}
+    .messages{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+    .msg{max-width:75%;padding:8px;border-radius:10px;border:1px solid var(--border);background:#fffef8}
+    .msg.me{margin-left:auto;background:#fff}
+    .meta{font-size:12px;color:var(--muted);margin-bottom:6px}
+    input[type="text"], textarea{width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);outline:none}
+    .small{font-size:13px;color:var(--muted)}
+    .btn{background:var(--primary);border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+    .btn.ghost {
+      background:transparent; border:1px solid var(--border); color:#e67e00
+    }
+    .muted{color:var(--muted)}
+    .files-list img,.files-list video,.files-list audio{max-width:200px;border-radius:8px;display:block;margin-top:6px}
+    @media(max-width:860px){ .layout{grid-template-columns:1fr} }
 
-    // ========================
-    // Posts (solo docentes publican)
-    // ========================
-    match /posts/{postId} {
-      // Cualquiera autenticado puede leer publicaciones
-      allow read: if request.auth != null;
+    /* Recuadro de llamada */
+    #callBox {
+      display: none;
+      margin-bottom: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff8e6;
+    }
+    #callBox strong { display: block; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1><img id="logo" src="logo.jpg" alt="Logo"> Chat Privado</h1>
+  <div style="display:flex;gap:8px">
+    <button id="btnIndex" class="btn ghost">Inicio</button>
+    <button id="btnLogout" class="btn ghost">Cerrar sesión</button>
+  </div>
+</header>
 
-      // ✅ Solo docentes autorizados pueden publicar, editar y eliminar
-      allow create, update, delete: if request.auth != null &&
-        (request.auth.token.email == "hey.junda@gmail.com" ||
-         request.auth.token.email == "yesenia.lisseth.flores@clases.edu.sv");
+<main class="container">
+  <div class="layout">
+    <!-- Sidebar -->
+    <div class="card">
+      <strong>Mis chats</strong>
+      <div style="margin:8px 0; display:flex; gap:6px;">
+        <input id="newChatEmail" type="text" placeholder="Correos separados por coma" />
+        <button id="btnNewChat" class="btn">Crear</button>
+      </div>
+      <div id="chatError" class="small muted"></div>
+      <div class="chats-list" id="chatsList"><p class="muted">Cargando chats…</p></div>
+    </div>
 
-      // ------------------------
-      // Comentarios dentro del post
-      // ------------------------
-      match /comments/{commentId} {
-        // Todos los usuarios autenticados pueden leer comentarios
-        allow read: if request.auth != null;
+    <!-- Main -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;align-items:center">
+        <div>
+          <strong id="chatTitle">Selecciona un chat</strong>
+          <div id="chatParticipants" class="small muted"></div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center">
+          <button id="btnLeave" class="btn ghost">Salir</button>
+          <button id="btnCall" class="btn">📞 Llamar</button>
+        </div>
+      </div>
 
-        // Todos los autenticados pueden escribir comentarios
-        allow create: if request.auth != null;
+      <!-- Recuadro de llamada -->
+      <div id="callBox">
+        <strong>📞 En llamada</strong>
+        <div id="callMembers" class="small muted"></div>
+        <div id="callTimer" class="small muted"></div>
+        <button id="btnHangup" class="btn ghost">❌ Colgar</button>
+      </div>
 
-        // Solo el autor o un docente puede borrarlo
-        allow delete: if request.auth != null &&
-          (request.auth.uid == resource.data.authorUid ||
-           request.auth.token.email == "hey.junda@gmail.com" ||
-           request.auth.token.email == "yesenia.lisseth.flores@clases.edu.sv");
+      <div id="messagesWrap" class="messages" aria-live="polite">
+        <p class="muted">No hay chat abierto.</p>
+      </div>
+
+      <!-- Archivos + Mensajes -->
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="fileInputChat" type="file" />
+          <button id="btnUploadFile" class="btn">Subir</button>
+        </div>
+        <textarea id="messageInput" placeholder="Escribe un mensaje..." rows="2"></textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="btnSend" class="btn">Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {
+  getFirestore, collection, query, where, getDocs, addDoc, serverTimestamp,
+  doc, onSnapshot, orderBy, updateDoc, setDoc, getDoc, arrayUnion, deleteDoc
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB0MfByHYHikrECUDVM2QenIsLiLmoS_FM",
+  authDomain: "hablahistoria-802fd.firebaseapp.com",
+  projectId: "hablahistoria-802fd",
+  storageBucket: "hablahistoria-802fd.appspot.com",
+  messagingSenderId: "322467465610",
+  appId: "1:322467465610:web:98da756bc6d80f440a6073",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const chatsListEl = document.getElementById('chatsList');
+const messagesWrap = document.getElementById('messagesWrap');
+const chatTitle = document.getElementById('chatTitle');
+const chatParticipants = document.getElementById('chatParticipants');
+const btnNewChat = document.getElementById('btnNewChat');
+const inputNewChat = document.getElementById('newChatEmail');
+const chatError = document.getElementById('chatError');
+const btnSend = document.getElementById('btnSend');
+const messageInput = document.getElementById('messageInput');
+const btnLeave = document.getElementById('btnLeave');
+const btnIndex = document.getElementById('btnIndex');
+const btnLogout = document.getElementById('btnLogout');
+const fileInputChat = document.getElementById('fileInputChat');
+const btnUploadFile = document.getElementById('btnUploadFile');
+
+const btnCall = document.getElementById("btnCall");
+const btnHangup = document.getElementById("btnHangup");
+const callBox = document.getElementById("callBox");
+const callMembers = document.getElementById("callMembers");
+const callTimer = document.getElementById("callTimer");
+
+let currentUser = null;
+let currentChatId = null;
+let unsubMessages = null;
+let pendingFiles = [];
+
+let pc = null;
+let localStream = null;
+let callDoc = null;
+let callInterval = null;
+let callStartTime = null;
+
+// ------------------ CHAT ------------------
+
+function fmtDate(ts){
+  try{ const d = ts?.toDate ? ts.toDate() : new Date(ts); return d.toLocaleString(); }catch{ return ''; }
+}
+
+async function uploadToCloudinary(file){
+  const endpoint = `https://api.cloudinary.com/v1_1/dzkddfq8b/auto/upload`;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', "unsigned_default");
+  fd.append('folder', "hablahistoria");
+  const res = await fetch(endpoint, { method:'POST', body:fd });
+  return await res.json();
+}
+
+async function loadMyChats(){
+  chatsListEl.innerHTML = '<p class="muted">Cargando chats…</p>';
+  const q = query(collection(db, 'privateChats'), where('participants', 'array-contains', currentUser.email));
+  const snap = await getDocs(q);
+  if (snap.empty){ chatsListEl.innerHTML = '<p class="muted">Aún no tienes chats.</p>'; return; }
+  chatsListEl.innerHTML = '';
+  snap.forEach(docSnap=>{
+    const data = docSnap.data();
+    const id = docSnap.id;
+    const div = document.createElement('div');
+    div.className = 'chat-item';
+    div.dataset.chatId = id;
+    div.innerHTML = `<strong>${(data.participants||[]).filter(e=>e!==currentUser.email).join(', ')}</strong>
+                     <div class="small muted">${fmtDate(data.lastAt)}</div>`;
+    div.onclick = ()=> openChat(id, data);
+    chatsListEl.appendChild(div);
+  });
+}
+
+let unsubCallListener = null;
+
+async function createOrOpenChatWith(input) {
+  chatError.textContent = "";
+  let emails = input.split(",").map(e=>e.trim()).filter(e=>e.includes("@"));
+  if (emails.length === 0) { chatError.textContent = "Introduce correos válidos."; return; }
+  if (!emails.includes(currentUser.email)) emails.push(currentUser.email);
+
+  const q = query(collection(db, 'privateChats'), where('participants', 'array-contains', currentUser.email));
+  const snap = await getDocs(q);
+  let existingChat = null;
+  snap.forEach(docSnap => {
+    const data = docSnap.data();
+    const parts = (data.participants || []).sort();
+    if (JSON.stringify(parts) === JSON.stringify(emails.sort())) {
+      existingChat = { id: docSnap.id, data };
+    }
+  });
+
+  if (existingChat) {
+    openChat(existingChat.id, existingChat.data);
+  } else {
+    const newDoc = await addDoc(collection(db, 'privateChats'), {
+      participants: emails,
+      createdAt: serverTimestamp(),
+      lastAt: serverTimestamp()
+    });
+    openChat(newDoc.id, { participants: emails });
+  }
+  await loadMyChats();
+  inputNewChat.value = "";
+}
+
+async function openChat(chatId, chatData){
+  if (unsubMessages) unsubMessages();
+  if (unsubCallListener) unsubCallListener();
+
+  currentChatId = chatId;
+  chatTitle.textContent = chatData.participants.filter(e=>e!==currentUser.email).join(', ') || "Chat";
+  chatParticipants.textContent = "Participantes: " + chatData.participants.join(', ');
+  messagesWrap.innerHTML = '<p class="muted">Cargando mensajes…</p>';
+  const msgsRef = collection(db, 'privateChats', chatId, 'messages');
+  const q = query(msgsRef, orderBy('createdAt', 'asc'));
+  unsubMessages = onSnapshot(q, snap=>{
+    messagesWrap.innerHTML = '';
+    if (snap.empty){ messagesWrap.innerHTML = '<p class="muted">Aún no hay mensajes.</p>'; return; }
+    snap.forEach(d=>{
+      const m = d.data();
+      const wrapper = document.createElement('div');
+      wrapper.className = 'msg ' + (m.authorEmail === currentUser.email ? 'me' : '');
+      wrapper.innerHTML = `<div class="meta"><strong>${m.authorEmail}</strong> • ${fmtDate(m.createdAt)}</div>`;
+      if (m.text) wrapper.innerHTML += `<div>${m.text}</div>`;
+      if (m.files && m.files.length){
+        const filesWrap = document.createElement('div');
+        filesWrap.className = 'files-list';
+        m.files.forEach(url=>{
+          if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) filesWrap.innerHTML += `<img src="${url}">`;
+          else if (url.match(/\.(mp4|webm|ogg)$/i)) filesWrap.innerHTML += `<video controls src="${url}"></video>`;
+          else if (url.match(/\.(mp3|wav|ogg)$/i)) filesWrap.innerHTML += `<audio controls src="${url}"></audio>`;
+          else filesWrap.innerHTML += `<a href="${url}" target="_blank">${url}</a>`;
+        });
+        wrapper.appendChild(filesWrap);
+      }
+      messagesWrap.appendChild(wrapper);
+    });
+    messagesWrap.scrollTop = messagesWrap.scrollHeight;
+  });
+
+  // Listener de llamada entrante
+  const callDocRef = doc(db, "calls", chatId);
+  unsubCallListener = onSnapshot(callDocRef, (snap) => {
+    const data = snap.exists() ? snap.data() : null;
+    if (data?.offer && !pc) {
+      const from = data.offerFrom || "Alguien";
+      if (confirm(`${from} te está llamando. ¿Responder?`)) {
+        answerCall();
       }
     }
+  });
+}
 
-    // ========================
-    // Chats Privados / Grupales
-    // ========================
-    match /privateChats/{chatId} {
-      // Solo los participantes pueden leer o escribir el chat
-      allow read, update, delete: if request.auth != null && request.auth.token.email in resource.data.participants;
-      allow create: if request.auth != null && request.auth.token.email in request.resource.data.participants;
+btnSend.onclick = async ()=>{
+  if (!currentChatId) return;
+  const text = messageInput.value.trim();
+  if (!text && pendingFiles.length===0) return;
+  const msgsRef = collection(db, 'privateChats', currentChatId, 'messages');
+  await addDoc(msgsRef, {
+    text: text || '',
+    files: pendingFiles,
+    authorEmail: currentUser.email,
+    createdAt: serverTimestamp()
+  });
+  await updateDoc(doc(db, 'privateChats', currentChatId), { lastAt: serverTimestamp() });
+  messageInput.value = '';
+  pendingFiles = [];
+};
 
-      // Subcolección de mensajes
-      match /messages/{messageId} {
-        // Solo los participantes pueden leer o crear mensajes
-        allow read, create: if request.auth != null &&
-          request.auth.token.email in get(/databases/$(database)/documents/privateChats/$(chatId)).data.participants;
+btnUploadFile.onclick = async ()=>{
+  const f = fileInputChat.files?.[0];
+  if (!f){ chatError.textContent = "Selecciona un archivo"; return; }
+  btnUploadFile.disabled = true;
+  btnUploadFile.textContent = "Subiendo…";
+  try {
+    const data = await uploadToCloudinary(f);
+    pendingFiles.push(data.secure_url);
+    chatError.textContent = "Archivo listo para enviar.";
+  } catch (e) {
+    chatError.textContent = "Error subiendo archivo.";
+  }
+  btnUploadFile.disabled = false;
+  btnUploadFile.textContent = "Subir";
+  fileInputChat.value = '';
+};
 
-        // Solo el autor del mensaje puede borrarlo/editarlo
-        allow update, delete: if request.auth != null &&
-          request.auth.token.email == resource.data.authorEmail;
+btnNewChat.onclick = ()=> createOrOpenChatWith(inputNewChat.value);
+btnLeave.onclick = ()=>{ currentChatId=null; messagesWrap.innerHTML = '<p class="muted">Selecciona un chat</p>'; };
+btnIndex.onclick = ()=>{ window.location.href="index.html"; };
+btnLogout.onclick = ()=> signOut(auth).then(()=>window.location.href="login.html");
+
+onAuthStateChanged(auth, async (user)=>{
+  if (!user){ location.href="login.html"; return; }
+  currentUser = user;
+  await loadMyChats();
+});
+
+// ------------------ LLAMADAS SOLO AUDIO ------------------
+
+async function initMedia() {
+  localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+}
+
+async function createPeerConnection(chatId) {
+  pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  pc.onicecandidate = async (event) => {
+    if (event.candidate) {
+      await setDoc(doc(db, "calls", chatId), {
+        candidates: arrayUnion(event.candidate.toJSON())
+      }, { merge: true });
+    }
+  };
+}
+
+function startTimer() {
+  callStartTime = Date.now();
+  callInterval = setInterval(() => {
+    const diff = Date.now() - callStartTime;
+    const mins = Math.floor(diff / 60000).toString().padStart(2,"0");
+    const secs = Math.floor((diff % 60000) / 1000).toString().padStart(2,"0");
+    callTimer.textContent = `Duración: ${mins}:${secs}`;
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(callInterval);
+  callTimer.textContent = "";
+}
+
+async function startCall() {
+  if (!currentChatId) return alert("Selecciona un chat primero");
+  try {
+    await initMedia();
+    await createPeerConnection(currentChatId);
+
+    callDoc = doc(db, "calls", currentChatId);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    await setDoc(callDoc, { offer, offerFrom: currentUser.email });
+
+    callBox.style.display = "block";
+    callMembers.textContent = chatParticipants.textContent;
+    startTimer();
+
+    onSnapshot(callDoc, async (snap) => {
+      const data = snap.data();
+      if (!pc) return;
+      if (!pc.currentRemoteDescription && data?.answer) {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
       }
-    }
-
-    // ========================
-    // Calls - señalización WebRTC
-    // ========================
-    match /calls/{callId} {
-      allow read, write: if request.auth != null 
-                         && exists(/databases/$(database)/documents/privateChats/$(callId))
-                         && request.auth.token.email in get(/databases/$(database)/documents/privateChats/$(callId)).data.participants;
-    }
+      if (data?.candidates) {
+        for (const c of data.candidates) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
+        }
+      }
+    });
+  } catch (e) {
+    console.error("Error iniciando llamada:", e);
+    hangup();
   }
 }
+
+async function answerCall() {
+  if (!currentChatId) return;
+  callDoc = doc(db, "calls", currentChatId);
+
+  const snap = await getDoc(callDoc);
+  const data = snap.exists() ? snap.data() : null;
+  if (!data?.offer) return;
+
+  try {
+    await initMedia();
+    await createPeerConnection(currentChatId);
+
+    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    await setDoc(callDoc, { answer }, { merge: true });
+
+    callBox.style.display = "block";
+    callMembers.textContent = chatParticipants.textContent;
+    startTimer();
+
+    onSnapshot(callDoc, async (snap) => {
+      const d = snap.data();
+      if (!pc) return;
+      if (d?.candidates) {
+        for (const c of d.candidates) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
+        }
+      }
+    });
+  } catch (e) {
+    console.error("Error respondiendo llamada:", e);
+    hangup();
+  }
+}
+
+async function hangup() {
+  try {
+    if (pc) pc.close();
+    pc = null;
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+    callBox.style.display = "none";
+    stopTimer();
+
+    if (currentChatId) {
+      const callRef = doc(db, "calls", currentChatId);
+      try { await deleteDoc(callRef); } catch(e){}
+    }
+  } catch(e){
+    console.error("Error colgando:", e);
+  }
+}
+
+btnCall.onclick = () => startCall();
+btnHangup.onclick = hangup;
+
+</script>
+</body>
+</html>
