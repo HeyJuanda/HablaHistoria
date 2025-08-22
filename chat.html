@@ -20,7 +20,7 @@
     main.container{flex:1 1 auto;display:flex;flex-direction:column}
     .layout{flex:1;display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px;overflow:hidden}
     .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;
-          display:flex;flex-direction:column;overflow:hidden;position:relative}
+          display:flex;flex-direction:column;overflow:hidden}
     .chats-list{flex:1;overflow:auto}
     .chat-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:8px}
     .chat-item.active{background:#fff2d9;border:1px solid var(--accent)}
@@ -37,17 +37,6 @@
     .muted{color:var(--muted)}
     .files-list img,.files-list video,.files-list audio{max-width:200px;border-radius:8px;display:block;margin-top:6px}
     @media(max-width:860px){ .layout{grid-template-columns:1fr} }
-
-    /* Recuadro de llamada */
-    #callBox {
-      display: none;
-      margin-bottom: 8px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px;
-      background: #fff8e6;
-    }
-    #callBox strong { display: block; margin-bottom: 4px; }
   </style>
 </head>
 <body>
@@ -74,25 +63,13 @@
 
     <!-- Main -->
     <div class="card">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px;align-items:center">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
         <div>
           <strong id="chatTitle">Selecciona un chat</strong>
           <div id="chatParticipants" class="small muted"></div>
         </div>
-        <div style="display:flex; gap:8px; align-items:center">
-          <button id="btnLeave" class="btn ghost">Salir</button>
-          <button id="btnCall" class="btn">📞 Llamar</button>
-        </div>
+        <button id="btnLeave" class="btn ghost">Salir</button>
       </div>
-
-      <!-- Recuadro de llamada -->
-      <div id="callBox">
-        <strong>📞 En llamada</strong>
-        <div id="callMembers" class="small muted"></div>
-        <div id="callTimer" class="small muted"></div>
-        <button id="btnHangup" class="btn ghost">❌ Colgar</button>
-      </div>
-
       <div id="messagesWrap" class="messages" aria-live="polite">
         <p class="muted">No hay chat abierto.</p>
       </div>
@@ -107,6 +84,19 @@
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button id="btnSend" class="btn">Enviar</button>
         </div>
+      </div>
+
+      <!-- Botones de llamadas -->
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="btnCall" class="btn">📞 Llamada</button>
+        <button id="btnVideo" class="btn">🎥 Videollamada</button>
+        <button id="btnHangup" class="btn ghost" disabled>❌ Colgar</button>
+      </div>
+
+      <!-- Área de llamada -->
+      <div id="callArea" style="margin-top:12px; display:none; flex-direction:column; gap:8px">
+        <video id="localVideo" autoplay muted playsinline style="width:200px;border-radius:8px;background:#000"></video>
+        <video id="remoteVideo" autoplay playsinline style="width:200px;border-radius:8px;background:#000"></video>
       </div>
     </div>
   </div>
@@ -129,6 +119,10 @@ const firebaseConfig = {
   appId: "1:322467465610:web:98da756bc6d80f440a6073",
 };
 
+const CLOUDINARY_CLOUD_NAME = "dzkddfq8b";
+const CLOUDINARY_UPLOAD_PRESET = "unsigned_default";
+const CLOUDINARY_FOLDER = "hablahistoria";
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -148,22 +142,10 @@ const btnLogout = document.getElementById('btnLogout');
 const fileInputChat = document.getElementById('fileInputChat');
 const btnUploadFile = document.getElementById('btnUploadFile');
 
-const btnCall = document.getElementById("btnCall");
-const btnHangup = document.getElementById("btnHangup");
-const callBox = document.getElementById("callBox");
-const callMembers = document.getElementById("callMembers");
-const callTimer = document.getElementById("callTimer");
-
 let currentUser = null;
 let currentChatId = null;
 let unsubMessages = null;
 let pendingFiles = [];
-
-let pc = null;
-let localStream = null;
-let callDoc = null;
-let callInterval = null;
-let callStartTime = null;
 
 // ------------------ CHAT ------------------
 
@@ -172,11 +154,11 @@ function fmtDate(ts){
 }
 
 async function uploadToCloudinary(file){
-  const endpoint = `https://api.cloudinary.com/v1_1/dzkddfq8b/auto/upload`;
+  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
   const fd = new FormData();
   fd.append('file', file);
-  fd.append('upload_preset', "unsigned_default");
-  fd.append('folder', "hablahistoria");
+  fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  if (CLOUDINARY_FOLDER) fd.append('folder', CLOUDINARY_FOLDER);
   const res = await fetch(endpoint, { method:'POST', body:fd });
   return await res.json();
 }
@@ -268,14 +250,16 @@ async function openChat(chatId, chatData){
     messagesWrap.scrollTop = messagesWrap.scrollHeight;
   });
 
-  // Listener de llamada entrante
+  // Listener de llamada entrante en esta sala/chat
   const callDocRef = doc(db, "calls", chatId);
   unsubCallListener = onSnapshot(callDocRef, (snap) => {
     const data = snap.exists() ? snap.data() : null;
+    // Si hay oferta y no hay pc activo -> notificar
     if (data?.offer && !pc) {
+      // Usa confirm por simplicidad — en producción podrías mostrar UI más bonita
       const from = data.offerFrom || "Alguien";
       if (confirm(`${from} te está llamando. ¿Responder?`)) {
-        answerCall();
+        answerCall(); // responderá con video por defecto
       }
     }
   });
@@ -325,15 +309,40 @@ onAuthStateChanged(auth, async (user)=>{
   await loadMyChats();
 });
 
-// ------------------ LLAMADAS SOLO AUDIO ------------------
+// ------------------ LLAMADAS (WebRTC) ------------------
 
-async function initMedia() {
-  localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+const btnCall = document.getElementById("btnCall");
+const btnVideo = document.getElementById("btnVideo");
+const btnHangup = document.getElementById("btnHangup");
+const localVideo = document.getElementById("localVideo");
+const remoteVideo = document.getElementById("remoteVideo");
+const callArea = document.getElementById("callArea");
+
+let pc = null;
+let localStream = null;
+let callDoc = null;
+
+const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+async function initMedia(video) {
+  // pide permisos: si video=false -> solo audio
+  localStream = await navigator.mediaDevices.getUserMedia({ video: !!video, audio: true });
+  localVideo.srcObject = localStream;
 }
 
 async function createPeerConnection(chatId) {
-  pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  pc = new RTCPeerConnection(servers);
+
+  // añadir tracks locales
   localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+  // remote stream
+  pc.ontrack = event => {
+    // puede venir como streams[0]
+    remoteVideo.srcObject = event.streams?.[0] ?? event.streams;
+  };
+
+  // enviar candidatos ICE a Firestore
   pc.onicecandidate = async (event) => {
     if (event.candidate) {
       await setDoc(doc(db, "calls", chatId), {
@@ -343,37 +352,23 @@ async function createPeerConnection(chatId) {
   };
 }
 
-function startTimer() {
-  callStartTime = Date.now();
-  callInterval = setInterval(() => {
-    const diff = Date.now() - callStartTime;
-    const mins = Math.floor(diff / 60000).toString().padStart(2,"0");
-    const secs = Math.floor((diff % 60000) / 1000).toString().padStart(2,"0");
-    callTimer.textContent = `Duración: ${mins}:${secs}`;
-  }, 1000);
-}
-
-function stopTimer() {
-  clearInterval(callInterval);
-  callTimer.textContent = "";
-}
-
-async function startCall() {
+async function startCall(video) {
   if (!currentChatId) return alert("Selecciona un chat primero");
+  callArea.style.display = "flex";
+  btnHangup.disabled = false;
+
   try {
-    await initMedia();
+    await initMedia(video);
     await createPeerConnection(currentChatId);
 
     callDoc = doc(db, "calls", currentChatId);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
+    // opcional: marcar quién llama
     await setDoc(callDoc, { offer, offerFrom: currentUser.email });
 
-    callBox.style.display = "block";
-    callMembers.textContent = chatParticipants.textContent;
-    startTimer();
-
+    // escuchar respuesta y candidatos
     onSnapshot(callDoc, async (snap) => {
       const data = snap.data();
       if (!pc) return;
@@ -400,8 +395,12 @@ async function answerCall() {
   const data = snap.exists() ? snap.data() : null;
   if (!data?.offer) return;
 
+  callArea.style.display = "flex";
+  btnHangup.disabled = false;
+
   try {
-    await initMedia();
+    // responder con video ON (por simplicidad). Si quieres solo audio, envia false.
+    await initMedia(true);
     await createPeerConnection(currentChatId);
 
     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -409,10 +408,6 @@ async function answerCall() {
     await pc.setLocalDescription(answer);
 
     await setDoc(callDoc, { answer }, { merge: true });
-
-    callBox.style.display = "block";
-    callMembers.textContent = chatParticipants.textContent;
-    startTimer();
 
     onSnapshot(callDoc, async (snap) => {
       const d = snap.data();
@@ -435,19 +430,24 @@ async function hangup() {
     pc = null;
     if (localStream) localStream.getTracks().forEach(t => t.stop());
     localStream = null;
-    callBox.style.display = "none";
-    stopTimer();
+    localVideo.srcObject = null;
+    remoteVideo.srcObject = null;
+    callArea.style.display = "none";
+    btnHangup.disabled = true;
 
+    // limpiar documento de señalización para evitar llamadas colgadas
     if (currentChatId) {
       const callRef = doc(db, "calls", currentChatId);
-      try { await deleteDoc(callRef); } catch(e){}
+      try { await deleteDoc(callRef); } catch(e){ /* no crítico */ }
     }
   } catch(e){
     console.error("Error colgando:", e);
   }
 }
 
-btnCall.onclick = () => startCall();
+// botones
+btnCall.onclick = () => startCall(false); // audio
+btnVideo.onclick = () => startCall(true); // video+audio
 btnHangup.onclick = hangup;
 
 </script>
