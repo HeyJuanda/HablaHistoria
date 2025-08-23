@@ -7,42 +7,167 @@
   <link rel="icon" href="logo.jpg" type="image/x-icon">
   <style>
     :root{
-      --primary:#ff9f1c; --accent:#e67e00; --bg:#fff; --card:#fffaf0; --border:#ffbf69;
-      --muted:#666;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:#111;
-         height:100vh;display:flex;flex-direction:column;overflow:hidden}
-    header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
-           padding:12px 16px;background:var(--primary);color:#fff}
-    header h1{margin:0;font-size:20px;display:flex;gap:8px;align-items:center}
-    #logo{height:40px;width:auto;border-radius:100%}
-    main.container{flex:1 1 auto;display:flex;flex-direction:column;overflow:hidden}
-    .layout{
-      flex:1;display:grid;grid-template-columns:340px 1fr;gap:12px;padding:12px;overflow:hidden
-    }
-    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;
-          display:flex;flex-direction:column;overflow:hidden}
-    .sidebar-card{display:flex;flex-direction:column;overflow:hidden; margin-bottom: 4px;}
-    .section {display: flex;flex-direction: column;border: 1px solid var(--border);border-radius: 10px;overflow: hidden;flex: 1;margin-bottom: 4px; /* espacio de 4px */}
-    .section nav{background:var(--primary);color:#fff;padding:6px 10px;font-weight:bold;font-size:14px;flex:0 0 auto}
-    .section-body{flex:1;display:flex;flex-direction:column;overflow:auto}
-    .section-chats{flex:1;overflow:auto}
-    .section-contacts{flex:1;overflow:auto}
-    .chats-list{flex:1;overflow:auto}
-    .chat-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:8px}
-    .chat-item.active{background:#fff2d9;border:1px solid var(--accent)}
-    .messages{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
-    .msg{max-width:75%;padding:8px;border-radius:10px;border:1px solid var(--border);background:#fffef8}
-    .msg.me{margin-left:auto;background:#fff}
-    .meta{font-size:12px;color:var(--muted);margin-bottom:6px}
-    input[type="text"], textarea{width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);outline:none}
-    .small{font-size:13px;color:var(--muted)}
-    .btn{background:var(--primary);border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
-    .btn.ghost { background:transparent; border:1px solid var(--border); color:#e67e00 }
-    .muted{color:var(--muted)}
-    .files-list img,.files-list video,.files-list audio{max-width:200px;border-radius:8px;display:block;margin-top:6px}
-    @media(max-width:860px){ .layout{grid-template-columns:1fr} }
+  --primary:#ff9f1c; --accent:#e67e00; --bg:#fff; --card:#fffaf0; --border:#ffbf69;
+  --muted:#666;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,sans-serif;
+  background:var(--bg);
+  color:#111;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden
+}
+header{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px 16px;
+  background:var(--primary);
+  color:#fff
+}
+header h1{
+  margin:0;
+  font-size:20px;
+  display:flex;
+  gap:8px;
+  align-items:center
+}
+#logo{height:40px;width:auto;border-radius:100%}
+main.container{flex:1 1 auto;display:flex;flex-direction:column;overflow:hidden}
+.layout{
+  flex:1;
+  display:grid;
+  grid-template-columns:340px 1fr;
+  gap:12px;
+  padding:12px;
+  overflow:hidden
+}
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden
+}
+.sidebar-card{
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  margin-bottom: 4px;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  flex: 1;
+  margin-bottom: 4px; /* espacio de 4px */
+}
+.section nav{
+  background:var(--primary);
+  color:#fff;
+  padding:6px 10px;
+  font-weight:bold;
+  font-size:14px;
+  flex:0 0 auto
+}
+.section-body{flex:1;display:flex;flex-direction:column;overflow:auto}
+.section-chats{flex:1;overflow:auto}
+.section-contacts{flex:1;overflow:auto}
+.chats-list{flex:1;overflow:auto}
+.chat-item{
+  padding:10px;
+  border-radius:8px;
+  cursor:pointer;
+  margin-bottom:8px
+}
+.chat-item.active{
+  background:#fff2d9;
+  border:1px solid var(--accent)
+}
+.messages{
+  flex:1;
+  overflow:auto;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px
+}
+.msg{
+  max-width:75%;
+  padding:8px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:#fffef8
+}
+.msg.me{margin-left:auto;background:#fff}
+.meta{font-size:12px;color:var(--muted);margin-bottom:6px}
+input[type="text"], textarea{
+  width:100%;
+  padding:8px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  outline:none
+}
+.small{font-size:13px;color:var(--muted)}
+.btn{
+  background:var(--primary);
+  border:none;
+  color:#fff;
+  padding:8px 10px;
+  border-radius:8px;
+  cursor:pointer
+}
+.btn.ghost {
+  background:transparent;
+  border:none;        /* 🚫 sin borde */
+  color:#fff;         /* ✅ texto blanco */
+}
+.muted{color:var(--muted)}
+.files-list img,.files-list video,.files-list audio{
+  max-width:200px;
+  border-radius:8px;
+  display:block;
+  margin-top:6px
+}
+@media(max-width:860px){ .layout{grid-template-columns:1fr} }
+
+/* 🔹 Ajustes para inputs y botones más pequeños en la barra lateral */
+/* 🔹 Inputs más pequeños, centrados dentro de la barra lateral */
+.sidebar-card input[type="text"] {
+  font-size: 13px;
+  padding: 4px 6px;
+  height: 26px;              /* más compacto */
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  margin: 0 auto;            /* centrado horizontal */
+  display: block;
+  width: calc(100% - 12px);  /* deja un pequeño margen con los bordes */
+  box-sizing: border-box;
+}
+.sidebar-card .btn {
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.sidebar-card input[type="text"] {
+  height: 28px;
+}
+
+.sidebar-card .btn {
+  height: 28px;
+  line-height: 1;
+}
+
   </style>
 </head>
 <body>
@@ -76,6 +201,9 @@
       <div class="section section-contacts">
         <nav>Contactos de mi grado</nav>
         <div class="section-body">
+          <div style="margin:8px 0; display:flex; gap:6px;">
+            <input id="searchContacts" type="text" placeholder="Buscar contacto..." />
+          </div>
           <div id="contactsList" class="chats-list"><p class="muted">Cargando contactos…</p></div>
         </div>
       </div>
@@ -147,6 +275,7 @@ const btnIndex = document.getElementById('btnIndex');
 const btnLogout = document.getElementById('btnLogout');
 const fileInputChat = document.getElementById('fileInputChat');
 const btnUploadFile = document.getElementById('btnUploadFile');
+const searchContactsInput = document.getElementById('searchContacts');
 
 let currentUser = null;
 let currentChatId = null;
@@ -197,7 +326,7 @@ async function loadMyChats(){
 
   if (snap.empty){ chatsListEl.innerHTML = '<p class="muted">Aún no tienes chats.</p>'; return; }
 
-  // Pre-cargar nombres de todos los “otros” participantes para que la lista muestre nombres
+  // Pre-cargar nombres
   const allOthers = [];
   snap.forEach(docSnap=>{
     const parts = (docSnap.data().participants || []).filter(e=>e!==currentUser.email);
@@ -239,7 +368,7 @@ async function loadContactsByGrade(){
   snap.forEach(docSnap=>{
     const data = docSnap.data();
     if (data.email === currentUser.email) return;
-    nameCache[data.email] = data.nombre; // aprovechar para cachear
+    nameCache[data.email] = data.nombre;
     const div = document.createElement('div');
     div.className = 'chat-item';
     div.innerHTML = `<strong>${data.nombre}</strong><div class="small muted">${data.email}</div>`;
@@ -247,6 +376,16 @@ async function loadContactsByGrade(){
     contactsListEl.appendChild(div);
   });
 }
+
+// --- Buscador de contactos ---
+searchContactsInput?.addEventListener('input', ()=>{
+  const term = searchContactsInput.value.toLowerCase();
+  const items = contactsListEl.querySelectorAll('.chat-item');
+  items.forEach(item=>{
+    const text = item.textContent.toLowerCase();
+    item.style.display = text.includes(term) ? '' : 'none';
+  });
+});
 
 async function createOrOpenChatWith(input) {
   chatError.textContent = "";
