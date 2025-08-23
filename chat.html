@@ -12,15 +12,23 @@
     }
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:#111;
-         height:100vh;display:flex;flex-direction:column}
+         height:100vh;display:flex;flex-direction:column;overflow:hidden}
     header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
            padding:12px 16px;background:var(--primary);color:#fff}
     header h1{margin:0;font-size:20px;display:flex;gap:8px;align-items:center}
     #logo{height:40px;width:auto;border-radius:100%}
-    main.container{flex:1 1 auto;display:flex;flex-direction:column}
-    .layout{flex:1;display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px;overflow:hidden}
+    main.container{flex:1 1 auto;display:flex;flex-direction:column;overflow:hidden}
+    .layout{
+      flex:1;display:grid;grid-template-columns:340px 1fr;gap:12px;padding:12px;overflow:hidden
+    }
     .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;
           display:flex;flex-direction:column;overflow:hidden}
+    .sidebar-card{display:flex;flex-direction:column;overflow:hidden; margin-bottom: 4px;}
+    .section {display: flex;flex-direction: column;border: 1px solid var(--border);border-radius: 10px;overflow: hidden;flex: 1;margin-bottom: 4px; /* espacio de 4px */}
+    .section nav{background:var(--primary);color:#fff;padding:6px 10px;font-weight:bold;font-size:14px;flex:0 0 auto}
+    .section-body{flex:1;display:flex;flex-direction:column;overflow:auto}
+    .section-chats{flex:1;overflow:auto}
+    .section-contacts{flex:1;overflow:auto}
     .chats-list{flex:1;overflow:auto}
     .chat-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:8px}
     .chat-item.active{background:#fff2d9;border:1px solid var(--accent)}
@@ -31,9 +39,7 @@
     input[type="text"], textarea{width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);outline:none}
     .small{font-size:13px;color:var(--muted)}
     .btn{background:var(--primary);border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
-    .btn.ghost {
-      background:transparent; border:1px solid var(--border); color:#e67e00
-    }
+    .btn.ghost { background:transparent; border:1px solid var(--border); color:#e67e00 }
     .muted{color:var(--muted)}
     .files-list img,.files-list video,.files-list audio{max-width:200px;border-radius:8px;display:block;margin-top:6px}
     @media(max-width:860px){ .layout{grid-template-columns:1fr} }
@@ -51,19 +57,33 @@
 <main class="container">
   <div class="layout">
     <!-- Sidebar -->
-    <div class="card">
-      <strong>Mis chats</strong>
-      <div style="margin:8px 0; display:flex; gap:6px;">
-        <input id="newChatEmail" type="text" placeholder="Correos separados por coma" />
-        <button id="btnNewChat" class="btn">Crear</button>
+    <div class="card sidebar-card">
+
+      <!-- Mis chats -->
+      <div class="section section-chats">
+        <nav>Mis chats</nav>
+        <div class="section-body">
+          <div style="margin:8px 0; display:flex; gap:6px;">
+            <input id="newChatEmail" type="text" placeholder="Correos separados por coma" />
+            <button id="btnNewChat" class="btn">Crear</button>
+          </div>
+          <div id="chatError" class="small muted"></div>
+          <div class="chats-list" id="chatsList"><p class="muted">Cargando chats…</p></div>
+        </div>
       </div>
-      <div id="chatError" class="small muted"></div>
-      <div class="chats-list" id="chatsList"><p class="muted">Cargando chats…</p></div>
+
+      <!-- Contactos -->
+      <div class="section section-contacts">
+        <nav>Contactos de mi grado</nav>
+        <div class="section-body">
+          <div id="contactsList" class="chats-list"><p class="muted">Cargando contactos…</p></div>
+        </div>
+      </div>
     </div>
 
     <!-- Main -->
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+    <div class="card" style="overflow:hidden">
+      <div style="flex:0 0 auto;display:flex;justify-content:space-between;margin-bottom:8px">
         <div>
           <strong id="chatTitle">Selecciona un chat</strong>
           <div id="chatParticipants" class="small muted"></div>
@@ -73,7 +93,7 @@
       <div id="messagesWrap" class="messages" aria-live="polite">
         <p class="muted">No hay chat abierto.</p>
       </div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px;overflow:auto">
         <div style="display:flex;gap:8px;align-items:center">
           <input id="fileInputChat" type="file" />
           <button id="btnUploadFile" class="btn">Subir</button>
@@ -113,6 +133,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const chatsListEl = document.getElementById('chatsList');
+const contactsListEl = document.getElementById('contactsList');
 const messagesWrap = document.getElementById('messagesWrap');
 const chatTitle = document.getElementById('chatTitle');
 const chatParticipants = document.getElementById('chatParticipants');
@@ -131,48 +152,110 @@ let currentUser = null;
 let currentChatId = null;
 let unsubMessages = null;
 let pendingFiles = [];
+let currentUserName = null;
+let nameCache = {}; // email -> nombre
 
 function fmtDate(ts){
   try{ const d = ts?.toDate ? ts.toDate() : new Date(ts); return d.toLocaleString(); }catch{ return ''; }
 }
 
-async function uploadToCloudinary(file){
-  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  if (CLOUDINARY_FOLDER) fd.append('folder', CLOUDINARY_FOLDER);
-  const res = await fetch(endpoint, { method:'POST', body:fd });
-  return await res.json();
+async function fetchUserNameByEmail(email){
+  if (nameCache[email]) return nameCache[email];
+  const qUsers = query(collection(db, "usuarios"), where("email","==", email));
+  const snap = await getDocs(qUsers);
+  const name = snap.empty ? null : (snap.docs[0].data().nombre || null);
+  if (name) nameCache[email] = name;
+  return name;
+}
+
+async function preloadNames(emails){
+  const uniq = [...new Set((emails||[]).filter(Boolean))];
+  for (let i=0;i<uniq.length;i+=10){
+    const chunk = uniq.slice(i,i+10);
+    const qUsers = query(collection(db,"usuarios"), where("email","in", chunk));
+    const snap = await getDocs(qUsers);
+    snap.forEach(d=>{
+      const data = d.data();
+      if (data?.email && data?.nombre) nameCache[data.email] = data.nombre;
+    });
+  }
+}
+
+async function ensureCurrentUserName(){
+  if (currentUserName) return currentUserName;
+  const qUser = query(collection(db, "usuarios"), where("email","==", currentUser.email));
+  const snapUser = await getDocs(qUser);
+  if (!snapUser.empty) currentUserName = snapUser.docs[0].data().nombre || null;
+  if (!currentUserName) currentUserName = currentUser.displayName || currentUser.email;
+  return currentUserName;
 }
 
 async function loadMyChats(){
   chatsListEl.innerHTML = '<p class="muted">Cargando chats…</p>';
-  const q = query(collection(db, 'privateChats'), where('participants', 'array-contains', currentUser.email));
-  const snap = await getDocs(q);
+  const qChats = query(collection(db, 'privateChats'), where('participants', 'array-contains', currentUser.email));
+  const snap = await getDocs(qChats);
+
   if (snap.empty){ chatsListEl.innerHTML = '<p class="muted">Aún no tienes chats.</p>'; return; }
+
+  // Pre-cargar nombres de todos los “otros” participantes para que la lista muestre nombres
+  const allOthers = [];
+  snap.forEach(docSnap=>{
+    const parts = (docSnap.data().participants || []).filter(e=>e!==currentUser.email);
+    allOthers.push(...parts);
+  });
+  await preloadNames(allOthers);
+
   chatsListEl.innerHTML = '';
   snap.forEach(docSnap=>{
     const data = docSnap.data();
     const id = docSnap.id;
+    const others = (data.participants||[]).filter(e=>e!==currentUser.email);
+    const display = others.map(e=> nameCache[e] || e).join(', ') || 'Chat';
+
     const div = document.createElement('div');
     div.className = 'chat-item';
     div.dataset.chatId = id;
-    div.innerHTML = `<strong>${(data.participants||[]).filter(e=>e!==currentUser.email).join(', ')}</strong>
+    div.innerHTML = `<strong>${display}</strong>
                      <div class="small muted">${fmtDate(data.lastAt)}</div>`;
     div.onclick = ()=> openChat(id, data);
     chatsListEl.appendChild(div);
   });
 }
 
+async function loadContactsByGrade(){
+  contactsListEl.innerHTML = '<p class="muted">Cargando contactos…</p>';
+  const qUser = query(collection(db, "usuarios"), where("email", "==", currentUser.email));
+  const snapUser = await getDocs(qUser);
+  if (snapUser.empty){ contactsListEl.innerHTML = '<p class="muted">No se encontró tu perfil.</p>'; return; }
+  const userData = snapUser.docs[0].data();
+  currentUserName = userData.nombre || currentUser.displayName || currentUser.email;
+  const grado = userData.grado;
+
+  const qContacts = query(collection(db, "usuarios"), where("grado", "==", grado));
+  const snap = await getDocs(qContacts);
+  if (snap.empty){ contactsListEl.innerHTML = '<p class="muted">No hay contactos en tu grado.</p>'; return; }
+
+  contactsListEl.innerHTML = '';
+  snap.forEach(docSnap=>{
+    const data = docSnap.data();
+    if (data.email === currentUser.email) return;
+    nameCache[data.email] = data.nombre; // aprovechar para cachear
+    const div = document.createElement('div');
+    div.className = 'chat-item';
+    div.innerHTML = `<strong>${data.nombre}</strong><div class="small muted">${data.email}</div>`;
+    div.onclick = ()=> createOrOpenChatWith(data.email);
+    contactsListEl.appendChild(div);
+  });
+}
+
 async function createOrOpenChatWith(input) {
   chatError.textContent = "";
-  let emails = input.split(",").map(e=>e.trim()).filter(e=>e.includes("@"));
+  let emails = Array.isArray(input) ? input : input.split(",").map(e=>e.trim()).filter(e=>e.includes("@"));
   if (emails.length === 0) { chatError.textContent = "Introduce correos válidos."; return; }
   if (!emails.includes(currentUser.email)) emails.push(currentUser.email);
 
-  const q = query(collection(db, 'privateChats'), where('participants', 'array-contains', currentUser.email));
-  const snap = await getDocs(q);
+  const qChats = query(collection(db, 'privateChats'), where('participants', 'array-contains', currentUser.email));
+  const snap = await getDocs(qChats);
   let existingChat = null;
   snap.forEach(docSnap => {
     const data = docSnap.data();
@@ -199,19 +282,31 @@ async function createOrOpenChatWith(input) {
 async function openChat(chatId, chatData){
   if (unsubMessages) unsubMessages();
   currentChatId = chatId;
-  chatTitle.textContent = chatData.participants.filter(e=>e!==currentUser.email).join(', ') || "Chat";
-  chatParticipants.textContent = "Participantes: " + chatData.participants.join(', ');
+
+  await preloadNames(chatData.participants || []);
+
+  chatTitle.textContent = (chatData.participants||[])
+    .filter(e=>e!==currentUser.email)
+    .map(e=> nameCache[e] || e)
+    .join(', ') || "Chat";
+
+  chatParticipants.textContent = "Participantes: " + (chatData.participants||[])
+    .map(e=> nameCache[e] || e)
+    .join(', ');
+
   messagesWrap.innerHTML = '<p class="muted">Cargando mensajes…</p>';
   const msgsRef = collection(db, 'privateChats', chatId, 'messages');
-  const q = query(msgsRef, orderBy('createdAt', 'asc'));
-  unsubMessages = onSnapshot(q, snap=>{
+  const qMsgs = query(msgsRef, orderBy('createdAt', 'asc'));
+  unsubMessages = onSnapshot(qMsgs, async snap=>{
     messagesWrap.innerHTML = '';
     if (snap.empty){ messagesWrap.innerHTML = '<p class="muted">Aún no hay mensajes.</p>'; return; }
-    snap.forEach(d=>{
+    for (const d of snap.docs){
       const m = d.data();
+      const displayName = m.authorName || nameCache[m.authorEmail] || await fetchUserNameByEmail(m.authorEmail) || m.authorEmail;
+
       const wrapper = document.createElement('div');
       wrapper.className = 'msg ' + (m.authorEmail === currentUser.email ? 'me' : '');
-      wrapper.innerHTML = `<div class="meta"><strong>${m.authorEmail}</strong> • ${fmtDate(m.createdAt)}</div>`;
+      wrapper.innerHTML = `<div class="meta"><strong>${displayName}</strong> • ${fmtDate(m.createdAt)}</div>`;
       if (m.text) wrapper.innerHTML += `<div>${m.text}</div>`;
       if (m.files && m.files.length){
         const filesWrap = document.createElement('div');
@@ -225,7 +320,7 @@ async function openChat(chatId, chatData){
         wrapper.appendChild(filesWrap);
       }
       messagesWrap.appendChild(wrapper);
-    });
+    }
     messagesWrap.scrollTop = messagesWrap.scrollHeight;
   });
 }
@@ -234,11 +329,13 @@ btnSend.onclick = async ()=>{
   if (!currentChatId) return;
   const text = messageInput.value.trim();
   if (!text && pendingFiles.length===0) return;
+  const name = await ensureCurrentUserName();
   const msgsRef = collection(db, 'privateChats', currentChatId, 'messages');
   await addDoc(msgsRef, {
     text: text || '',
     files: pendingFiles,
     authorEmail: currentUser.email,
+    authorName: name,
     createdAt: serverTimestamp()
   });
   await updateDoc(doc(db, 'privateChats', currentChatId), { lastAt: serverTimestamp() });
@@ -268,6 +365,7 @@ onAuthStateChanged(auth, async (user)=>{
   if (!user){ location.href="login.html"; return; }
   currentUser = user;
   await loadMyChats();
+  await loadContactsByGrade();
 });
 </script>
 </body>
