@@ -125,10 +125,6 @@ input[type="text"], textarea{
   padding:8px 10px;
   border-radius:8px;
   cursor:pointer;
-  margin-top: 4px;
-  margin-bottom: 4px;
-  margin-left: 4px; 
-  margin-right: 4px
 }
 .btn.ghost {
   background:transparent;
@@ -142,7 +138,24 @@ input[type="text"], textarea{
   display:block;
   margin-top:6px
 }
-@media(max-width:860px){ .layout{grid-template-columns:1fr} }
+/* --- Diseño responsive --- */
+/* --- Vista móvil estilo WhatsApp --- */
+@media(max-width:860px){
+  .layout{
+    grid-template-columns: 1fr;  /* solo una columna */
+  }
+  .sidebar-card{
+    display:block;
+  }
+  .card.chat-panel{
+    display:none; /* oculto por defecto */
+  }
+  .card.chat-panel.active{
+    display:flex; /* cuando se activa un chat */
+    flex-direction:column;
+  }
+}
+
 
 /* 🔹 Ajustes para inputs y botones más pequeños en la barra lateral */
 /* 🔹 Inputs más pequeños, centrados dentro de la barra lateral */
@@ -219,29 +232,30 @@ input[type="text"], textarea{
     </div>
 
     <!-- Main -->
-    <div class="card" style="overflow:hidden">
-      <div style="flex:0 0 auto;display:flex;justify-content:space-between;margin-bottom:8px">
-        <div>
-          <strong id="chatTitle">Selecciona un chat</strong>
-          <div id="chatParticipants" class="small muted"></div>
-        </div>
-        <button id="btnLeave" class="btn ghost">Salir</button>
-      </div>
-      <div id="messagesWrap" class="messages" aria-live="polite">
-        <p class="muted">No hay chat abierto.</p>
-      </div>
-      <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px;overflow:auto">
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="fileInputChat" type="file" />
-          <button id="btnUploadFile" class="btn">Subir</button>
-        </div>
-        <textarea id="messageInput" placeholder="Escribe un mensaje..." rows="2"></textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button id="btnSend" class="btn">Enviar</button>
-        </div>
-      </div>
+<div class="card chat-panel" style="overflow:hidden">
+  <div style="flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div>
+      <strong id="chatTitle">Selecciona un chat</strong>
+      <div id="chatParticipants" class="small muted"></div>
+    </div>
+    <button id="btnLeave" class="btn">Salir</button>
+  </div>
+  
+  <div id="messagesWrap" class="messages" aria-live="polite">
+    <p class="muted">No hay chat abierto.</p>
+  </div>
+  
+  <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px;overflow:auto">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="fileInputChat" type="file" />
+      <button id="btnUploadFile" class="btn">Subir</button>
+    </div>
+    <textarea id="messageInput" placeholder="Escribe un mensaje..." rows="2"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="btnSend" class="btn">Enviar</button>
     </div>
   </div>
+</div>
 </main>
 
 <script type="module">
@@ -431,23 +445,36 @@ async function openChat(chatId, chatData){
   if (unsubMessages) unsubMessages();
   currentChatId = chatId;
 
+  // 🔹 En móviles: ocultar lista y mostrar chat
+  if (window.innerWidth <= 860) {
+    document.querySelector(".sidebar-card").style.display = "none";
+    document.querySelector(".chat-panel").classList.add("active");
+  }
+
+  // 🔹 Cargar nombres
   await preloadNames(chatData.participants || []);
 
+  // 🔹 Título del chat (mostrar nombres de otros)
   chatTitle.textContent = (chatData.participants||[])
     .filter(e=>e!==currentUser.email)
     .map(e=> nameCache[e] || e)
     .join(', ') || "Chat";
 
+  // 🔹 Participantes
   chatParticipants.textContent = "Participantes: " + (chatData.participants||[])
     .map(e=> nameCache[e] || e)
     .join(', ');
 
+  // 🔹 Cargar mensajes
   messagesWrap.innerHTML = '<p class="muted">Cargando mensajes…</p>';
   const msgsRef = collection(db, 'privateChats', chatId, 'messages');
   const qMsgs = query(msgsRef, orderBy('createdAt', 'asc'));
   unsubMessages = onSnapshot(qMsgs, async snap=>{
     messagesWrap.innerHTML = '';
-    if (snap.empty){ messagesWrap.innerHTML = '<p class="muted">Aún no hay mensajes.</p>'; return; }
+    if (snap.empty){ 
+      messagesWrap.innerHTML = '<p class="muted">Aún no hay mensajes.</p>'; 
+      return; 
+    }
     for (const d of snap.docs){
       const m = d.data();
       const displayName = m.authorName || nameCache[m.authorEmail] || await fetchUserNameByEmail(m.authorEmail) || m.authorEmail;
@@ -496,7 +523,7 @@ btnUploadFile.onclick = async ()=>{
   if (!f){ chatError.textContent = "Selecciona un archivo"; return; }
   btnUploadFile.disabled = true;
   btnUploadFile.textContent = "Subiendo…";
-  const data = await uploadToCloudinary(f);
+  const data = await uploadToCloudinary(f);  // ❌ ESTA FUNCIÓN NO EXISTE
   pendingFiles.push(data.secure_url);
   chatError.textContent = "Archivo listo para enviar.";
   btnUploadFile.disabled = false;
@@ -504,8 +531,36 @@ btnUploadFile.onclick = async ()=>{
   fileInputChat.value = '';
 };
 
-btnNewChat.onclick = ()=> createOrOpenChatWith(inputNewChat.value);
-btnLeave.onclick = ()=>{ currentChatId=null; messagesWrap.innerHTML = '<p class="muted">Selecciona un chat</p>'; };
+async function uploadToCloudinary(file){
+  const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  formData.append("folder", CLOUDINARY_FOLDER);
+
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData
+  });
+
+  if(!res.ok){
+    throw new Error("Error al subir archivo");
+  }
+  return await res.json(); // 🔹 aquí viene el secure_url
+}
+
+btnLeave.onclick = () => {
+  currentChatId = null;
+  messagesWrap.innerHTML = '<p class="muted">Selecciona un chat</p>';
+
+  // 🔹 Si es celular → volver a mostrar la lista
+  if (window.innerWidth <= 860) {
+    document.querySelector(".sidebar-card").style.display = "flex";
+    document.querySelector(".chat-panel").classList.remove("active");
+  }
+};
+
+
 btnIndex.onclick = ()=>{ window.location.href="index.html"; };
 btnLogout.onclick = ()=> signOut(auth).then(()=>window.location.href="login.html");
 
@@ -518,4 +573,3 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
-
