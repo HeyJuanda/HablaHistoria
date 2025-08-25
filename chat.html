@@ -250,8 +250,14 @@ input[type="text"], textarea{
   
   <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px;overflow:auto">
     <div style="display:flex;gap:8px;align-items:center">
-      <input id="fileInputChat" type="file" />
-      <button id="btnUploadFile" class="btn">Subir</button>
+  <!-- Input oculto -->
+      <input id="fileInputChat" type="file" hidden />
+
+  <!-- Botón para seleccionar archivo -->
+      <button id="btnSelectFile" class="btn">📂 Seleccionar archivo</button>
+
+  <!-- Botón para subir archivo -->
+      <button id="btnUploadFile" class="btn">⬆ Subir</button>
     </div>
     <textarea id="messageInput" placeholder="Escribe un mensaje..." rows="2"></textarea>
     <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -301,6 +307,7 @@ const btnIndex = document.getElementById('btnIndex');
 const btnLogout = document.getElementById('btnLogout');
 const fileInputChat = document.getElementById('fileInputChat');
 const btnUploadFile = document.getElementById('btnUploadFile');
+const btnSelectFile = document.getElementById('btnSelectFile'); // 🔹 Nuevo
 const searchContactsInput = document.getElementById('searchContacts');
 
 let currentUser = null;
@@ -352,7 +359,6 @@ async function loadMyChats(){
 
   if (snap.empty){ chatsListEl.innerHTML = '<p class="muted">Aún no tienes chats.</p>'; return; }
 
-  // Pre-cargar nombres
   const allOthers = [];
   snap.forEach(docSnap=>{
     const parts = (docSnap.data().participants || []).filter(e=>e!==currentUser.email);
@@ -403,7 +409,6 @@ async function loadContactsByGrade(){
   });
 }
 
-// --- Buscador de contactos ---
 searchContactsInput?.addEventListener('input', ()=>{
   const term = searchContactsInput.value.toLowerCase();
   const items = contactsListEl.querySelectorAll('.chat-item');
@@ -448,27 +453,22 @@ async function openChat(chatId, chatData){
   if (unsubMessages) unsubMessages();
   currentChatId = chatId;
 
-  // 🔹 En móviles: ocultar lista y mostrar chat
   if (window.innerWidth <= 860) {
     document.querySelector(".sidebar-card").style.display = "none";
     document.querySelector(".chat-panel").classList.add("active");
   }
 
-  // 🔹 Cargar nombres
   await preloadNames(chatData.participants || []);
 
-  // 🔹 Título del chat (mostrar nombres de otros)
   chatTitle.textContent = (chatData.participants||[])
     .filter(e=>e!==currentUser.email)
     .map(e=> nameCache[e] || e)
     .join(', ') || "Chat";
 
-  // 🔹 Participantes
   chatParticipants.textContent = "Participantes: " + (chatData.participants||[])
     .map(e=> nameCache[e] || e)
     .join(', ');
 
-  // 🔹 Cargar mensajes
   messagesWrap.innerHTML = '<p class="muted">Cargando mensajes…</p>';
   const msgsRef = collection(db, 'privateChats', chatId, 'messages');
   const qMsgs = query(msgsRef, orderBy('createdAt', 'asc'));
@@ -521,17 +521,32 @@ btnSend.onclick = async ()=>{
   pendingFiles = [];
 };
 
+// 🔹 Evento seleccionar archivo
+btnSelectFile.addEventListener("click", () => {
+  fileInputChat.click();
+});
+
+// 🔹 Mostrar nombre del archivo en el botón
+fileInputChat.addEventListener("change", (e) => {
+  if (e.target.files.length > 0) {
+    btnSelectFile.textContent = "📂 " + e.target.files[0].name;
+  } else {
+    btnSelectFile.textContent = "📂 Seleccionar archivo";
+  }
+});
+
 btnUploadFile.onclick = async ()=>{
   const f = fileInputChat.files?.[0];
   if (!f){ chatError.textContent = "Selecciona un archivo"; return; }
   btnUploadFile.disabled = true;
   btnUploadFile.textContent = "Subiendo…";
-  const data = await uploadToCloudinary(f);  // ❌ ESTA FUNCIÓN NO EXISTE
+  const data = await uploadToCloudinary(f);
   pendingFiles.push(data.secure_url);
   chatError.textContent = "Archivo listo para enviar.";
   btnUploadFile.disabled = false;
-  btnUploadFile.textContent = "Subir";
+  btnUploadFile.textContent = "⬆ Subir";
   fileInputChat.value = '';
+  btnSelectFile.textContent = "📂 Seleccionar archivo"; // reset botón
 };
 
 async function uploadToCloudinary(file){
@@ -549,20 +564,18 @@ async function uploadToCloudinary(file){
   if(!res.ok){
     throw new Error("Error al subir archivo");
   }
-  return await res.json(); // 🔹 aquí viene el secure_url
+  return await res.json();
 }
 
 btnLeave.onclick = () => {
   currentChatId = null;
   messagesWrap.innerHTML = '<p class="muted">Selecciona un chat</p>';
 
-  // 🔹 Si es celular → volver a mostrar la lista
   if (window.innerWidth <= 860) {
     document.querySelector(".sidebar-card").style.display = "flex";
     document.querySelector(".chat-panel").classList.remove("active");
   }
 };
-
 
 btnIndex.onclick = ()=>{ window.location.href="index.html"; };
 btnLogout.onclick = ()=> signOut(auth).then(()=>window.location.href="login.html");
@@ -576,4 +589,5 @@ onAuthStateChanged(auth, async (user)=>{
 </script>
 </body>
 </html>
+
 
