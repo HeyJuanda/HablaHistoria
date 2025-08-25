@@ -151,11 +151,16 @@
     <div class="uploader">
       <strong>Subir archivos (imágenes / video / audio)</strong>
       <div class="grid cols-2" style="align-items:center">
-        <input id="fileInput" type="file" multiple accept="image/*,video/*,audio/*" />
-        <button class="btn" id="btnUpload">Subir</button>
+    <!-- Input oculto -->
+       <input id="fileInput" type="file" multiple accept="image/*,video/*,audio/*" hidden />
+    <!-- Botón para abrir el input -->
+       <button class="btn" id="btnSelectFile">📂 Seleccionar archivo</button>
+    <!-- Botón para subir -->
+       <button class="btn" id="btnUpload">⬆ Subir</button>
       </div>
       <div id="uploads" class="uploads"></div>
     </div>
+
 
     <div class="stack">
       <label for="postFiles" class="muted">Enlaces — admite imágenes, video o audio. (Separalas por linea)</label>
@@ -209,6 +214,21 @@
   // Uploader refs
   const fileInput = document.getElementById('fileInput');
   const btnUpload = document.getElementById('btnUpload');
+  const btnSelectFile = document.getElementById('btnSelectFile');
+  // Botón "Seleccionar archivo" abre el input oculto
+  btnSelectFile?.addEventListener("click", () => {
+   fileInput.click();
+  });
+
+// Mostrar el nombre del archivo seleccionado en el botón
+  fileInput?.addEventListener("change", (e) => {
+   if (e.target.files.length > 0) {
+    btnSelectFile.textContent = "📂 " + e.target.files[0].name;
+   } else {
+     btnSelectFile.textContent = "📂 Seleccionar archivo";
+   }
+  });
+
   const uploadsWrap = document.getElementById('uploads');
   const postFilesTA = document.getElementById('postFiles');
 
@@ -552,6 +572,7 @@
 </script>
 </body>
 </html>
+
 
 
 
