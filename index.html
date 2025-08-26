@@ -17,6 +17,14 @@
       --primary:#ff9f1c;
     }
     body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    .logo {
+    text-align:center;
+    }
+    .logo img {
+    width:150px;
+    height:auto;
+    opacity: 85%;
+    }
     header {
       display:flex; justify-content:space-between; align-items:center;
       padding:14px 16px; background:#ff9f1c; color:#fff;
@@ -124,6 +132,9 @@
 <body>
 <header>
   <h1> <img src="logo.jpg"> Habla Historia</h1>
+  <div class="logo">
+  <img src="hugw.svg" alt="Hug-oh Logo">
+  </div>
   <div class="actions">
     <button onclick="location.href='https://www.youtube.com/@hablahistoria?sub_confirmation=1'" class="btn">Youtube</button>
     <button onclick="location.href='chat.html'" class="btn">Chats</button>
@@ -574,6 +585,7 @@
 </script>
 </body>
 </html>
+
 
 
 
