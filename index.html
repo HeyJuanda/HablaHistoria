@@ -223,7 +223,8 @@ header > div:last-child {
         <option value="8A">8° "A"</option>
         <option value="8B">8° "B"</option>
         <option value="9A">9° "A"</option>
-        <option value="9B">9° "B"</option>
+        <option value="9B">9° "B"</option> 
+        <option value="All">All</option>
       </select>
     </div>
     <textarea id="postContent" placeholder="Contenido..."></textarea>
@@ -436,16 +437,42 @@ header > div:last-child {
     }
   }
 
-  onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-      location.href = "login.html";
-      return;
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    // Mostrar modal solo si no hay sesión activa
+    const modal = document.getElementById("guestModal");
+    const btnAnon = document.getElementById("btnAnon");
+    const btnGoLogin = document.getElementById("btnGoLogin");
+
+    if (modal && btnAnon && btnGoLogin) {
+      modal.style.display = "flex"; // Mostrar modal
+
+      btnAnon.onclick = async () => {
+        // Sesión "anónima" solo en frontend
+        currentUser = { email: "Anónimo", uid: "anon" };
+        userGrade = "All"; // Invitado ve solo públicas
+        modal.style.display = "none"; // Ocultar modal tras elegir anónimo
+        await loadPosts();
+      };
+
+      btnGoLogin.onclick = () => {
+        location.href = "login.html";
+      };
     }
-    currentUser = user;
-    if (TEACHER_EMAILS.includes(user.email)) teacherPanel.style.display = 'block';
-    userGrade = await getUserGrade(user.uid) || localStorage.getItem('gradoUsuario');
-    await loadPosts();
-  });
+    return; // Salir, no cargar posts hasta elegir
+  }
+
+  // Usuario autenticado → ocultar modal si estaba abierto
+  const modal = document.getElementById("guestModal");
+  if (modal) modal.style.display = "none";
+
+  currentUser = user;
+  if (TEACHER_EMAILS.includes(user.email)) teacherPanel.style.display = 'block';
+  userGrade = await getUserGrade(user.uid) || localStorage.getItem('gradoUsuario');
+  await loadPosts();
+});
+
+
 
   async function getUserGrade(uid) {
     try {
@@ -494,15 +521,34 @@ header > div:last-child {
     infoBox.textContent = "Cargando…";
     try {
       let snap;
-      if (TEACHER_EMAILS.includes(currentUser.email)) {
-        snap = await getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc")));
-      } else {
-        if (!userGrade) {
-          infoBox.textContent = "No encontramos tu grado.";
-          return;
-        }
-        snap = await getDocs(query(collection(db, "posts"), where("allowedGrades", "array-contains", userGrade)));
-      }
+
+// Invitados: solo ver publicaciones públicas ("All")
+if (!currentUser || currentUser.email === "anónimo") {
+  snap = await getDocs(query(
+    collection(db, "posts"),
+    where("allowedGrades", "array-contains", "All")
+  ));
+}
+// Docentes: todo
+else if (TEACHER_EMAILS.includes(currentUser.email)) {
+  snap = await getDocs(query(
+    collection(db, "posts"),
+    orderBy("createdAt", "desc")
+  ));
+}
+// Estudiantes: solo su grado
+else {
+  if (!userGrade) {
+    infoBox.textContent = "No encontramos tu grado.";
+    return;
+  }
+  snap = await getDocs(query(
+    collection(db, "posts"),
+    where("allowedGrades", "array-contains", userGrade)
+  ));
+}
+
+
 
       const posts = [];
       snap.forEach(d => posts.push({ id: d.id, ...d.data() }));
@@ -652,6 +698,25 @@ header > div:last-child {
     location.href = "login.html";
   });
 </script>
+<!-- Modal invitado -->
+<!-- Modal para invitados -->
+<div id="guestModal" class="modal">
+  <div class="modal-content">
+    <h2>Bienvenido 👋</h2>
+    <p>Puedes entrar como <strong>anónimo</strong> o ir al <strong>login</strong>. Si seleccionas anónimo no podras ver los post de los grados ni comentar.</p>
+    <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+      <button id="btnAnon" class="btn">Entrar como Anónimo</button>
+      <button id="btnGoLogin" class="btn ghost">Ir al Login</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .modal { display:none; position:fixed; z-index:1000; inset:0;
+           background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; }
+  .modal-content { background:#fff; padding:20px; border-radius:12px; max-width:420px; width:90%;
+                   text-align:center; box-shadow:0 10px 30px rgba(0,0,0,.25) }
+</style>
 </body>
 </html>
 
