@@ -531,25 +531,21 @@ async function loadPosts() {
   postsList.innerHTML = "";
   infoBox.style.display = 'block';
   infoBox.textContent = "Cargando…";
+
   try {
     let snap;
 
-    // Invitados: solo ver publicaciones públicas ("All")
     if (!currentUser || currentUser.email === "anónimo") {
       snap = await getDocs(query(
         collection(db, "posts"),
         where("allowedGrades", "array-contains", "All")
       ));
-    }
-    // Docentes: todo
-    else if (TEACHER_EMAILS.includes(currentUser.email)) {
+    } else if (TEACHER_EMAILS.includes(currentUser.email)) {
       snap = await getDocs(query(
         collection(db, "posts"),
         orderBy("createdAt", "desc")
       ));
-    }
-    // Estudiantes: solo su grado
-    else {
+    } else {
       if (!userGrade) {
         infoBox.textContent = "No encontramos tu grado.";
         return;
@@ -566,12 +562,17 @@ async function loadPosts() {
     infoBox.style.display = posts.length ? 'none' : 'block';
     infoBox.textContent = posts.length ? "" : "No hay publicaciones.";
 
+    // Crear contenedor para anuncios dinámicos
+    let adContainer = document.createElement('div');
+    adContainer.className = "ad-container";
+    postsList.appendChild(adContainer);
+
     let count = 0;
     for (const p of posts) {
       const el = document.createElement('div');
       el.className = "post";
 
-      // Título colapsable
+      // --- Contenido de la publicación ---
       const toggle = document.createElement('h3');
       toggle.textContent = p.title;
       toggle.style.cursor = "pointer";
@@ -642,7 +643,6 @@ async function loadPosts() {
 
       await loadComments(p.id, commentsList);
 
-      // Botón eliminar solo para docentes
       if (TEACHER_EMAILS.includes(currentUser.email)) {
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "🗑 Eliminar";
@@ -665,19 +665,17 @@ async function loadPosts() {
 
       postsList.appendChild(el);
       count++;
-
-      // === Insertar anuncio cada 2 publicaciones ===
-      if (count % 2 === 0) {
-        const ad = getRandomAd();
-        const adDiv = document.createElement('div');
-        adDiv.className = "ad";
-        adDiv.innerHTML = `
-          <a href="${ad.url}" target="_blank">
-            <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
-          </a>`;
-        postsList.appendChild(adDiv);
-      }
     }
+
+    // --- Mostrar anuncios cada 10 segundos ---
+    setInterval(() => {
+      const ad = getRandomAd();
+      adContainer.innerHTML = `
+        <a href="${ad.url}" target="_blank">
+          <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
+        </a>`;
+    }, 10000); // 10000 ms = 10 s
+
   } catch (err) {
     console.error(err);
     infoBox.textContent = "Error cargando publicaciones.";
@@ -736,6 +734,7 @@ async function loadPosts() {
 </style>
 </body>
 </html>
+
 
 
 
