@@ -523,10 +523,6 @@ const ads = [
 ];
 
 // Función para obtener anuncio aleatorio
-function getRandomAd() {
-  return ads[Math.floor(Math.random() * ads.length)];
-}
-
 async function loadPosts() {
   postsList.innerHTML = "";
   infoBox.style.display = 'block';
@@ -562,17 +558,14 @@ async function loadPosts() {
     infoBox.style.display = posts.length ? 'none' : 'block';
     infoBox.textContent = posts.length ? "" : "No hay publicaciones.";
 
-    // Crear contenedor para anuncios dinámicos
-    let adContainer = document.createElement('div');
-    adContainer.className = "ad-container";
-    postsList.appendChild(adContainer);
-
     let count = 0;
+
+    // Creamos los posts
     for (const p of posts) {
       const el = document.createElement('div');
       el.className = "post";
 
-      // --- Contenido de la publicación ---
+      // --- contenido de la publicación ---
       const toggle = document.createElement('h3');
       toggle.textContent = p.title;
       toggle.style.cursor = "pointer";
@@ -667,21 +660,27 @@ async function loadPosts() {
       count++;
     }
 
-    // --- Mostrar anuncios cada 10 segundos ---
-    setInterval(() => {
+    // === ANUNCIO DINÁMICO CADA 10 SEGUNDOS ===
+    let adInterval = setInterval(() => {
       const ad = getRandomAd();
-      adContainer.innerHTML = `
+      const adDiv = document.createElement('div');
+      adDiv.className = "ad";
+      adDiv.innerHTML = `
         <a href="${ad.url}" target="_blank">
           <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
         </a>`;
-    }, 10000); // 10000 ms = 10 s
+
+      // Insertar al inicio, final o aleatorio entre publicaciones
+      const allPosts = postsList.querySelectorAll(".post");
+      const randomIndex = Math.floor(Math.random() * allPosts.length);
+      postsList.insertBefore(adDiv, allPosts[randomIndex].nextSibling);
+    }, 10000);
 
   } catch (err) {
     console.error(err);
     infoBox.textContent = "Error cargando publicaciones.";
   }
 }
-
 
   async function loadComments(postId, container) {
     container.innerHTML = "Cargando comentarios...";
@@ -734,6 +733,7 @@ async function loadPosts() {
 </style>
 </body>
 </html>
+
 
 
 
