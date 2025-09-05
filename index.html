@@ -522,6 +522,7 @@ const ads = [
   { img: "add/add4.png", url: "https://www.youtube.com/@hablahistoria?sub_confirmation=1" }
 ];
 
+function getRandomAd() { return ads[Math.floor(Math.random() * ads.length)]; }
 // Función para obtener anuncio aleatorio
 async function loadPosts() {
   postsList.innerHTML = "";
@@ -560,7 +561,16 @@ async function loadPosts() {
 
     let count = 0;
 
-    // Creamos los posts
+    // Contenedores de anuncios iniciales
+    const adContainers = [];
+    for (let i = 0; i < 2; i++) {
+      const adDiv = document.createElement('div');
+      adDiv.className = "ad";
+      postsList.appendChild(adDiv);
+      adContainers.push(adDiv);
+    }
+
+    // Crear posts
     for (const p of posts) {
       const el = document.createElement('div');
       el.className = "post";
@@ -660,20 +670,15 @@ async function loadPosts() {
       count++;
     }
 
-    // === ANUNCIO DINÁMICO CADA 10 SEGUNDOS ===
-    let adInterval = setInterval(() => {
-      const ad = getRandomAd();
-      const adDiv = document.createElement('div');
-      adDiv.className = "ad";
-      adDiv.innerHTML = `
-        <a href="${ad.url}" target="_blank">
-          <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
-        </a>`;
-
-      // Insertar al inicio, final o aleatorio entre publicaciones
-      const allPosts = postsList.querySelectorAll(".post");
-      const randomIndex = Math.floor(Math.random() * allPosts.length);
-      postsList.insertBefore(adDiv, allPosts[randomIndex].nextSibling);
+    // === Cambiar anuncios cada 10 segundos ===
+    setInterval(() => {
+      adContainers.forEach(adDiv => {
+        const ad = getRandomAd();
+        adDiv.innerHTML = `
+          <a href="${ad.url}" target="_blank">
+            <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
+          </a>`;
+      });
     }, 10000);
 
   } catch (err) {
@@ -733,6 +738,7 @@ async function loadPosts() {
 </style>
 </body>
 </html>
+
 
 
 
