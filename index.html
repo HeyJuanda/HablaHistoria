@@ -530,22 +530,17 @@ async function loadPosts() {
   try {
     let snap;
 
-    // Invitados: solo publicaciones públicas
     if (!currentUser || currentUser.email === "anónimo") {
       snap = await getDocs(query(
         collection(db, "posts"),
         where("allowedGrades", "array-contains", "All")
       ));
-    }
-    // Docentes: todo
-    else if (TEACHER_EMAILS.includes(currentUser.email)) {
+    } else if (TEACHER_EMAILS.includes(currentUser.email)) {
       snap = await getDocs(query(
         collection(db, "posts"),
         orderBy("createdAt", "desc")
       ));
-    }
-    // Estudiantes: solo su grado
-    else {
+    } else {
       if (!userGrade) {
         infoBox.textContent = "No encontramos tu grado.";
         return;
@@ -562,14 +557,14 @@ async function loadPosts() {
     infoBox.style.display = posts.length ? 'none' : 'block';
     infoBox.textContent = posts.length ? "" : "No hay publicaciones.";
 
+    let adContainers = [];
     let count = 0;
 
-    // Crear posts
     for (const p of posts) {
       const el = document.createElement('div');
       el.className = "post";
 
-      // --- Contenido ---
+      // --- Contenido del post ---
       const toggle = document.createElement('h3');
       toggle.textContent = p.title;
       toggle.style.cursor = "pointer";
@@ -640,7 +635,6 @@ async function loadPosts() {
 
       await loadComments(p.id, commentsList);
 
-      // --- Botón eliminar solo para docentes ---
       if (TEACHER_EMAILS.includes(currentUser.email)) {
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "🗑 Eliminar";
@@ -663,26 +657,25 @@ async function loadPosts() {
 
       postsList.appendChild(el);
       count++;
+
+      // --- Insertar anuncio cada 2 posts ---
+      if (count % 2 === 0) {
+        const adDiv = document.createElement('div');
+        adDiv.className = "ad";
+
+        // Generar anuncio inicial
+        const ad = ads[Math.floor(Math.random() * ads.length)];
+        adDiv.innerHTML = `
+          <a href="${ad.url}" target="_blank">
+            <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
+          </a>`;
+
+        postsList.appendChild(adDiv);
+        adContainers.push(adDiv);
+      }
     }
 
-    // === ANUNCIOS DINÁMICOS ===
-    // Crear 2 contenedores de anuncios y mostrar anuncios iniciales
-    const adContainers = [];
-    for (let i = 0; i < 2; i++) {
-      const adDiv = document.createElement('div');
-      adDiv.className = "ad";
-
-      const ad = ads[Math.floor(Math.random() * ads.length)];
-      adDiv.innerHTML = `
-        <a href="${ad.url}" target="_blank">
-          <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
-        </a>`;
-
-      postsList.appendChild(adDiv);
-      adContainers.push(adDiv);
-    }
-
-    // Cambiar anuncios cada 10 segundos
+    // --- Actualizar todos los anuncios cada 10 segundos ---
     setInterval(() => {
       adContainers.forEach(adDiv => {
         const ad = ads[Math.floor(Math.random() * ads.length)];
@@ -698,6 +691,7 @@ async function loadPosts() {
     infoBox.textContent = "Error cargando publicaciones.";
   }
 }
+
 
   async function loadComments(postId, container) {
     container.innerHTML = "Cargando comentarios...";
@@ -750,6 +744,7 @@ async function loadPosts() {
 </style>
 </body>
 </html>
+
 
 
 
