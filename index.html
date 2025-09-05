@@ -521,8 +521,6 @@ const ads = [
   { img: "add/add31.png", url: "https://hug-oh.com/" },
   { img: "add/add4.png", url: "https://www.youtube.com/@hablahistoria?sub_confirmation=1" }
 ];
-
-function getRandomAd() { return ads[Math.floor(Math.random() * ads.length)]; }
 // Función para obtener anuncio aleatorio
 async function loadPosts() {
   postsList.innerHTML = "";
@@ -532,17 +530,22 @@ async function loadPosts() {
   try {
     let snap;
 
+    // Invitados: solo publicaciones públicas
     if (!currentUser || currentUser.email === "anónimo") {
       snap = await getDocs(query(
         collection(db, "posts"),
         where("allowedGrades", "array-contains", "All")
       ));
-    } else if (TEACHER_EMAILS.includes(currentUser.email)) {
+    }
+    // Docentes: todo
+    else if (TEACHER_EMAILS.includes(currentUser.email)) {
       snap = await getDocs(query(
         collection(db, "posts"),
         orderBy("createdAt", "desc")
       ));
-    } else {
+    }
+    // Estudiantes: solo su grado
+    else {
       if (!userGrade) {
         infoBox.textContent = "No encontramos tu grado.";
         return;
@@ -561,21 +564,12 @@ async function loadPosts() {
 
     let count = 0;
 
-    // Contenedores de anuncios iniciales
-    const adContainers = [];
-    for (let i = 0; i < 2; i++) {
-      const adDiv = document.createElement('div');
-      adDiv.className = "ad";
-      postsList.appendChild(adDiv);
-      adContainers.push(adDiv);
-    }
-
     // Crear posts
     for (const p of posts) {
       const el = document.createElement('div');
       el.className = "post";
 
-      // --- contenido de la publicación ---
+      // --- Contenido ---
       const toggle = document.createElement('h3');
       toggle.textContent = p.title;
       toggle.style.cursor = "pointer";
@@ -607,7 +601,7 @@ async function loadPosts() {
       el.appendChild(toggleContentBtn);
       el.appendChild(contentDiv);
 
-      // Comentarios
+      // --- Comentarios ---
       const commentsDiv = document.createElement("div");
       commentsDiv.className = "comments";
       const commentsList = document.createElement("div");
@@ -646,6 +640,7 @@ async function loadPosts() {
 
       await loadComments(p.id, commentsList);
 
+      // --- Botón eliminar solo para docentes ---
       if (TEACHER_EMAILS.includes(currentUser.email)) {
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "🗑 Eliminar";
@@ -670,10 +665,27 @@ async function loadPosts() {
       count++;
     }
 
-    // === Cambiar anuncios cada 10 segundos ===
+    // === ANUNCIOS DINÁMICOS ===
+    // Crear 2 contenedores de anuncios y mostrar anuncios iniciales
+    const adContainers = [];
+    for (let i = 0; i < 2; i++) {
+      const adDiv = document.createElement('div');
+      adDiv.className = "ad";
+
+      const ad = ads[Math.floor(Math.random() * ads.length)];
+      adDiv.innerHTML = `
+        <a href="${ad.url}" target="_blank">
+          <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
+        </a>`;
+
+      postsList.appendChild(adDiv);
+      adContainers.push(adDiv);
+    }
+
+    // Cambiar anuncios cada 10 segundos
     setInterval(() => {
       adContainers.forEach(adDiv => {
-        const ad = getRandomAd();
+        const ad = ads[Math.floor(Math.random() * ads.length)];
         adDiv.innerHTML = `
           <a href="${ad.url}" target="_blank">
             <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
@@ -738,6 +750,7 @@ async function loadPosts() {
 </style>
 </body>
 </html>
+
 
 
 
