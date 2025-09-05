@@ -262,266 +262,233 @@ header > div:last-child {
 </div>
 
 <script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-  import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-  import { getFirestore, doc, getDoc, collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { 
+  getFirestore, doc, getDoc, collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc 
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyB0MfByHYHikrECUDVM2QenIsLiLmoS_FM",
-    authDomain: "hablahistoria-802fd.firebaseapp.com",
-    projectId: "hablahistoria-802fd",
-    storageBucket: "hablahistoria-802fd.appspot.com",
-    messagingSenderId: "322467465610",
-    appId: "1:322467465610:web:98da756bc6d80f440a6073",
-  };
+// === Firebase principal (posts, usuarios, etc.) ===
+const firebaseConfig = {
+  apiKey: "AIzaSyB0MfByHYHikrECUDVM2QenIsLiLmoS_FM",
+  authDomain: "hablahistoria-802fd.firebaseapp.com",
+  projectId: "hablahistoria-802fd",
+  storageBucket: "hablahistoria-802fd.appspot.com",
+  messagingSenderId: "322467465610",
+  appId: "1:322467465610:web:98da756bc6d80f440a6073",
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-  const TEACHER_EMAILS = ["hey.junda@gmail.com", "yesenia.lisseth.flores@clases.edu.sv",];
-  const LINK_API_KEY = "a30ad1652095af5a53163f76aec86711"; // 👉 consigue tu API key gratis en linkpreview.net
+// === Firebase secundaria (SOLO anuncios) ===
+const adsApp = initializeApp({
+  apiKey: "AIzaSyBDPtxo52XQOeBpKRv1ZIrbcNrfTMsQpdY",
+  authDomain: "hug-0h.firebaseapp.com",
+  databaseURL: "https://hug-0h-default-rtdb.firebaseio.com",
+  projectId: "hug-0h",
+  storageBucket: "hug-0h.firebasestorage.app",
+  messagingSenderId: "244700876607",
+  appId: "1:244700876607:web:d6bf0054241cc974900d8a",
+  measurementId: "G-KFV3RRHSKX"
+}, "ads");
+const adsDb = getFirestore(adsApp);
 
-  // === Configuración Cloudinary (REEMPLAZA ESTOS VALORES) ===
-  // 1) Crea un Upload Preset SIN firmar (unsigned) en tu cuenta Cloudinary.
-  // 2) Coloca aquí tu cloud name y el nombre del preset.
-  const CLOUDINARY_CLOUD_NAME = "dzkddfq8b"; // p.ej. "demo"
-  const CLOUDINARY_UPLOAD_PRESET = "unsigned_default"; // p.ej. "unsigned_default"
-  // (Opcional) carpeta destino dentro de Cloudinary
-  const CLOUDINARY_FOLDER = "hablahistoria";
+// === Config extra ===
+const TEACHER_EMAILS = ["hey.junda@gmail.com", "yesenia.lisseth.flores@clases.edu.sv"];
+const LINK_API_KEY = "a30ad1652095af5a53163f76aec86711";
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
+// === Cloudinary ===
+const CLOUDINARY_CLOUD_NAME = "dzkddfq8b";
+const CLOUDINARY_UPLOAD_PRESET = "unsigned_default";
+const CLOUDINARY_FOLDER = "hablahistoria";
 
-  const teacherPanel = document.getElementById('teacherPanel');
-  const postsList = document.getElementById('postsList');
-  const infoBox = document.getElementById('infoBox');
+// === UI Refs ===
+const teacherPanel = document.getElementById('teacherPanel');
+const postsList = document.getElementById('postsList');
+const infoBox = document.getElementById('infoBox');
+const fileInput = document.getElementById('fileInput');
+const btnUpload = document.getElementById('btnUpload');
+const btnSelectFile = document.getElementById('btnSelectFile');
+const uploadsWrap = document.getElementById('uploads');
+const postFilesTA = document.getElementById('postFiles');
 
-  // Uploader refs
-  const fileInput = document.getElementById('fileInput');
-  const btnUpload = document.getElementById('btnUpload');
-  const btnSelectFile = document.getElementById('btnSelectFile');
-  // Botón "Seleccionar archivo" abre el input oculto
-  btnSelectFile?.addEventListener("click", () => {
-   fileInput.click();
+let currentUser = null;
+let userGrade = null;
+
+// === Utilidades ===
+function parseUrls(raw) {
+  return raw.split('\n').map(s => s.trim()).filter(Boolean);
+}
+function fmtDate(d) {
+  try {
+    const date = d?.toDate ? d.toDate() : new Date(d);
+    return date.toLocaleString();
+  } catch {
+    return "";
+  }
+}
+
+// === Cloudinary uploader ===
+btnSelectFile?.addEventListener("click", () => fileInput.click());
+fileInput?.addEventListener("change", (e) => {
+  btnSelectFile.textContent = e.target.files.length > 0
+    ? "📂 " + e.target.files[0].name
+    : "📂 Seleccionar archivo";
+});
+async function uploadToCloudinary(file) {
+  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  if (CLOUDINARY_FOLDER) fd.append('folder', CLOUDINARY_FOLDER);
+
+  const item = document.createElement('div');
+  item.className = 'upload-item';
+  item.innerHTML = `<strong>${file.name}</strong><br><progress value="0" max="100"></progress><span class="muted"> Subiendo…</span>`;
+  uploadsWrap.appendChild(item);
+
+  const progressEl = item.querySelector('progress');
+  const statusEl = item.querySelector('span');
+
+  try {
+    const res = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', endpoint);
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve(xhr) : reject(new Error(xhr.responseText));
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) progressEl.value = Math.round((e.loaded / e.total) * 100);
+      };
+      xhr.send(fd);
+    });
+
+    const data = JSON.parse(res.responseText);
+    statusEl.textContent = ' Listo ✅';
+    progressEl.value = 100;
+
+    postFilesTA.value = (postFilesTA.value ? postFilesTA.value + '\n' : '') + data.secure_url;
+
+    if (data.resource_type === 'image') {
+      const img = document.createElement('img');
+      img.src = data.secure_url;
+      img.alt = file.name;
+      img.style.maxWidth = '160px';
+      img.style.borderRadius = '8px';
+      img.style.display = 'block';
+      img.style.marginTop = '6px';
+      item.appendChild(img);
+    }
+
+    return data;
+  } catch (err) {
+    statusEl.textContent = ' Error ❌';
+    console.error('Cloudinary upload error:', err);
+    alert('No se pudo subir: ' + file.name);
+    throw err;
+  }
+}
+btnUpload?.addEventListener('click', async () => {
+  const files = Array.from(fileInput.files || []);
+  if (!files.length) return alert('Selecciona al menos un archivo.');
+  for (const f of files) await uploadToCloudinary(f);
+  fileInput.value = '';
+});
+
+// === Render media (imagenes, videos, links) ===
+async function renderMedia(url) {
+  const u = url.toLowerCase();
+  if (u.match(/\.(jpg|jpeg|png|gif|webp)$/)) return `<img src="${url}" alt="Imagen relacionada" />`;
+  if (u.match(/\.(mp4|webm|ogg)$/)) return `<video controls src="${url}"></video>`;
+  if (u.match(/\.(mp3|wav|ogg)$/)) return `<audio controls src="${url}"></audio>`;
+  try {
+    const res = await fetch(`https://api.linkpreview.net/?key=${LINK_API_KEY}&q=${encodeURIComponent(url)}`);
+    const data = await res.json();
+    return `
+      <div class="link-preview">
+        ${data.image ? `<img src="${data.image}" alt="preview"/>` : ""}
+        <a href="${data.url}" target="_blank">${data.title || url}</a>
+        <p>${data.description || ""}</p>
+      </div>`;
+  } catch {
+    return `<div class="link-preview"><a href="${url}" target="_blank">${url}</a></div>`;
+  }
+}
+
+// === Fetch Ads (otra base) ===
+async function fetchAds() {
+  const adsSnap = await getDocs(collection(adsDb, "images_base64"));
+  const ads = [];
+  adsSnap.forEach(doc => {
+    const ad = doc.data();
+    ads.push({ img: ad.base64, url: ad.linkUrl });
   });
+  return ads;
+}
 
-// Mostrar el nombre del archivo seleccionado en el botón
-  fileInput?.addEventListener("change", (e) => {
-   if (e.target.files.length > 0) {
-    btnSelectFile.textContent = "📂 " + e.target.files[0].name;
-   } else {
-     btnSelectFile.textContent = "📂 Seleccionar archivo";
-   }
-  });
-
-  const uploadsWrap = document.getElementById('uploads');
-  const postFilesTA = document.getElementById('postFiles');
-
-  let currentUser = null;
-  let userGrade = null;
-
-  function parseUrls(raw) {
-    return raw.split('\n').map(s => s.trim()).filter(Boolean);
-  }
-
-  // === Cloudinary: subida de archivos (unsigned) ===
-  async function uploadToCloudinary(file) {
-    const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    if (CLOUDINARY_FOLDER) fd.append('folder', CLOUDINARY_FOLDER);
-
-    // UI item
-    const item = document.createElement('div');
-    item.className = 'upload-item';
-    item.innerHTML = `<strong>${file.name}</strong><br><progress value="0" max="100"></progress><span class="muted"> Subiendo…</span>`;
-    const progressEl = item.querySelector('progress');
-    const statusEl = item.querySelector('span');
-    uploadsWrap.appendChild(item);
-
-    try {
-      // fetch no expone progreso nativo; usamos xhr para mostrar avance real
-      const res = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', endpoint);
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve(xhr) : reject(new Error(xhr.responseText));
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) progressEl.value = Math.round((e.loaded / e.total) * 100);
-        };
-        xhr.send(fd);
-      });
-
-      const data = JSON.parse(res.responseText);
-      statusEl.textContent = ' Listo ✅';
-      progressEl.value = 100;
-
-      // Agregar URL al textarea (nueva línea)
-      const url = data.secure_url;
-      postFilesTA.value = (postFilesTA.value ? postFilesTA.value + '\n' : '') + url;
-
-      // Vista previa rápida si es imagen
-      if (data.resource_type === 'image') {
-        const img = document.createElement('img');
-        img.src = data.secure_url;
-        img.alt = file.name;
-        img.style.maxWidth = '160px';
-        img.style.borderRadius = '8px';
-        img.style.display = 'block';
-        img.style.marginTop = '6px';
-        item.appendChild(img);
-      }
-
-      return data;
-    } catch (err) {
-      statusEl.textContent = ' Error ❌';
-      console.error('Cloudinary upload error:', err);
-      alert('No se pudo subir: ' + file.name);
-      throw err;
-    }
-  }
-
-  btnUpload?.addEventListener('click', async () => {
-    const files = Array.from(fileInput.files || []);
-    if (!files.length) {
-      alert('Selecciona al menos un archivo.');
-      return;
-    }
-
-    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET || CLOUDINARY_CLOUD_NAME.includes('tu_')) {
-      alert('Configura CLOUDINARY_CLOUD_NAME y CLOUDINARY_UPLOAD_PRESET en el código.');
-      return;
-    }
-
-    for (const f of files) {
-      await uploadToCloudinary(f);
-    }
-
-    // Limpia el input tras subir
-    fileInput.value = '';
-  });
-
-  // Previsualización de links con API externa
-  async function renderMedia(url) {
-    const u = url.toLowerCase();
-    if (u.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-      return `<img src="${url}" alt="Imagen relacionada" />`;
-    }
-    if (u.match(/\.(mp4|webm|ogg)$/)) {
-      return `<video controls src="${url}"></video>`;
-    }
-    if (u.match(/\.(mp3|wav|ogg)$/)) {
-      return `<audio controls src="${url}"></audio>`;
-    }
-
-    // Fetch a API LinkPreview
-    try {
-      const res = await fetch(`https://api.linkpreview.net/?key=${LINK_API_KEY}&q=${encodeURIComponent(url)}`);
-      const data = await res.json();
-      return `
-        <div class="link-preview">
-          ${data.image ? `<img src="${data.image}" alt="preview"/>` : ""}
-          <a href="${data.url}" target="_blank">${data.title || url}</a>
-          <p>${data.description || ""}</p>
-        </div>`;
-    } catch (e) {
-      return `<div class="link-preview"><a href="${url}" target="_blank">${url}</a></div>`;
-    }
-  }
-
-  function fmtDate(d) {
-    try {
-      const date = d?.toDate ? d.toDate() : new Date(d);
-      return date.toLocaleString();
-    } catch {
-      return "";
-    }
-  }
-
+// === Auth ===
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
-    // Mostrar modal solo si no hay sesión activa
     const modal = document.getElementById("guestModal");
     const btnAnon = document.getElementById("btnAnon");
     const btnGoLogin = document.getElementById("btnGoLogin");
-
     if (modal && btnAnon && btnGoLogin) {
-      modal.style.display = "flex"; // Mostrar modal
-
+      modal.style.display = "flex";
       btnAnon.onclick = async () => {
-        // Sesión "anónima" solo en frontend
         currentUser = { email: "Anónimo", uid: "anon" };
-        userGrade = "All"; // Invitado ve solo públicas
-        modal.style.display = "none"; // Ocultar modal tras elegir anónimo
+        userGrade = "All";
+        modal.style.display = "none";
         await loadPosts();
       };
-
-      btnGoLogin.onclick = () => {
-        location.href = "login.html";
-      };
+      btnGoLogin.onclick = () => location.href = "login.html";
     }
-    return; // Salir, no cargar posts hasta elegir
+    return;
   }
-
-  // Usuario autenticado → ocultar modal si estaba abierto
   const modal = document.getElementById("guestModal");
   if (modal) modal.style.display = "none";
-
   currentUser = user;
   if (TEACHER_EMAILS.includes(user.email)) teacherPanel.style.display = 'block';
   userGrade = await getUserGrade(user.uid) || localStorage.getItem('gradoUsuario');
   await loadPosts();
 });
 
-
-
-  async function getUserGrade(uid) {
-    try {
-      const snap = await getDoc(doc(db, "usuarios", uid));
-      return snap.exists() ? snap.data().grado : null;
-    } catch {
-      return null;
-    }
+// === Obtener grado ===
+async function getUserGrade(uid) {
+  try {
+    const snap = await getDoc(doc(db, "usuarios", uid));
+    return snap.exists() ? snap.data().grado : null;
+  } catch {
+    return null;
   }
+}
 
-  document.getElementById('btnPublish')?.addEventListener('click', async () => {
-    const title = document.getElementById('postTitle').value.trim();
-    const content = document.getElementById('postContent').value.trim();
-    const files = parseUrls(document.getElementById('postFiles').value);
-    const gradesSel = Array.from(document.getElementById('postGrades').selectedOptions).map(o => o.value);
-    if (!title || !content || !gradesSel.length) {
-      alert("Completa todos los campos.");
-      return;
-    }
-    try {
-      await addDoc(collection(db, "posts"), {
-        title,
-        content,
-        allowedGrades: gradesSel,
-        files,
-        authorUid: currentUser.uid,
-        authorEmail: currentUser.email,
-        createdAt: serverTimestamp()
-      });
-      document.getElementById('postTitle').value = "";
-      document.getElementById('postContent').value = "";
-      document.getElementById('postFiles').value = "";
-      Array.from(document.getElementById('postGrades').options).forEach(o => o.selected = false);
-      uploadsWrap.innerHTML = '';
-      await loadPosts();
-      alert("Publicado ✅");
-    } catch (err) {
-      console.error(err);
-      alert("No se pudo publicar.");
-    }
-  });
+// === Publicar ===
+document.getElementById('btnPublish')?.addEventListener('click', async () => {
+  const title = document.getElementById('postTitle').value.trim();
+  const content = document.getElementById('postContent').value.trim();
+  const files = parseUrls(document.getElementById('postFiles').value);
+  const gradesSel = Array.from(document.getElementById('postGrades').selectedOptions).map(o => o.value);
+  if (!title || !content || !gradesSel.length) return alert("Completa todos los campos.");
+  try {
+    await addDoc(collection(db, "posts"), {
+      title, content, allowedGrades: gradesSel, files,
+      authorUid: currentUser.uid, authorEmail: currentUser.email,
+      createdAt: serverTimestamp()
+    });
+    document.getElementById('postTitle').value = "";
+    document.getElementById('postContent').value = "";
+    document.getElementById('postFiles').value = "";
+    Array.from(document.getElementById('postGrades').options).forEach(o => o.selected = false);
+    uploadsWrap.innerHTML = '';
+    await loadPosts();
+    alert("Publicado ✅");
+  } catch (err) {
+    console.error(err);
+    alert("No se pudo publicar.");
+  }
+});
 
-const ads = [
-  { img: "add/add.png", url: "https://hug-oh.com/add.html" },
-  { img: "add/add2.png", url: "https://hug-oh.com/pop.html" },
-  { img: "add/add31.png", url: "https://hug-oh.com/" },
-  { img: "add/add4.png", url: "https://www.youtube.com/@hablahistoria?sub_confirmation=1" }
-];
-// Función para obtener anuncio aleatorio
+// === Cargar Posts + Anuncios ===
 async function loadPosts() {
   postsList.innerHTML = "";
   infoBox.style.display = 'block';
@@ -529,26 +496,16 @@ async function loadPosts() {
 
   try {
     let snap;
-
     if (!currentUser || currentUser.email === "anónimo") {
-      snap = await getDocs(query(
-        collection(db, "posts"),
-        where("allowedGrades", "array-contains", "All")
-      ));
+      snap = await getDocs(query(collection(db, "posts"), where("allowedGrades", "array-contains", "All")));
     } else if (TEACHER_EMAILS.includes(currentUser.email)) {
-      snap = await getDocs(query(
-        collection(db, "posts"),
-        orderBy("createdAt", "desc")
-      ));
+      snap = await getDocs(query(collection(db, "posts"), orderBy("createdAt", "desc")));
     } else {
       if (!userGrade) {
         infoBox.textContent = "No encontramos tu grado.";
         return;
       }
-      snap = await getDocs(query(
-        collection(db, "posts"),
-        where("allowedGrades", "array-contains", userGrade)
-      ));
+      snap = await getDocs(query(collection(db, "posts"), where("allowedGrades", "array-contains", userGrade)));
     }
 
     const posts = [];
@@ -559,12 +516,12 @@ async function loadPosts() {
 
     let adContainers = [];
     let count = 0;
+    const ads = await fetchAds();
 
     for (const p of posts) {
       const el = document.createElement('div');
       el.className = "post";
 
-      // --- Contenido del post ---
       const toggle = document.createElement('h3');
       toggle.textContent = p.title;
       toggle.style.cursor = "pointer";
@@ -572,9 +529,7 @@ async function loadPosts() {
       const contentDiv = document.createElement('div');
       contentDiv.className = "content-collapsed";
       const mediaHtmls = await Promise.all((p.files || []).map(renderMedia));
-      contentDiv.innerHTML = `
-        <p>${(p.content || "").replace(/\n/g, "<br>")}</p>
-        <div class="media">${mediaHtmls.join("")}</div>`;
+      contentDiv.innerHTML = `<p>${(p.content || "").replace(/\n/g, "<br>")}</p><div class="media">${mediaHtmls.join("")}</div>`;
 
       const toggleContentBtn = document.createElement('button');
       toggleContentBtn.className = "toggle-content-btn";
@@ -596,7 +551,7 @@ async function loadPosts() {
       el.appendChild(toggleContentBtn);
       el.appendChild(contentDiv);
 
-      // --- Comentarios ---
+      // Comentarios
       const commentsDiv = document.createElement("div");
       commentsDiv.className = "comments";
       const commentsList = document.createElement("div");
@@ -611,20 +566,16 @@ async function loadPosts() {
       commentBtn.textContent = "Responder";
       commentBtn.className = "btn";
       commentBtn.style.marginLeft = "6px";
-
       commentBtn.onclick = async () => {
         const text = commentInput.value.trim();
         if (!text) return;
         try {
           await addDoc(collection(db, "posts", p.id, "comments"), {
-            text,
-            author: currentUser.email,
-            createdAt: serverTimestamp()
+            text, author: currentUser.email, createdAt: serverTimestamp()
           });
           commentInput.value = "";
           await loadComments(p.id, commentsList);
-        } catch (err) {
-          console.error(err);
+        } catch {
           alert("No se pudo comentar.");
         }
       };
@@ -641,16 +592,9 @@ async function loadPosts() {
         deleteBtn.className = "btn ghost";
         deleteBtn.style.marginTop = "10px";
         deleteBtn.onclick = async () => {
-          const confirmDelete = confirm(`¿Eliminar publicación: "${p.title}"?`);
-          if (!confirmDelete) return;
-          try {
-            await deleteDoc(doc(db, "posts", p.id));
-            await loadPosts();
-            alert("Publicación eliminada ✅");
-          } catch (err) {
-            console.error(err);
-            alert("Error al eliminar.");
-          }
+          if (!confirm(`¿Eliminar publicación: "${p.title}"?`)) return;
+          await deleteDoc(doc(db, "posts", p.id));
+          await loadPosts();
         };
         el.appendChild(deleteBtn);
       }
@@ -658,33 +602,24 @@ async function loadPosts() {
       postsList.appendChild(el);
       count++;
 
-      // --- Insertar anuncio cada 2 posts ---
-      if (count % 2 === 0) {
+      if (count % 2 === 0 && ads.length > 0) {
         const adDiv = document.createElement('div');
         adDiv.className = "ad";
-
-        // Generar anuncio inicial
         const ad = ads[Math.floor(Math.random() * ads.length)];
-        adDiv.innerHTML = `
-          <a href="${ad.url}" target="_blank">
-            <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
-          </a>`;
-
+        adDiv.innerHTML = `<a href="${ad.url}" target="_blank"><img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;"></a>`;
         postsList.appendChild(adDiv);
         adContainers.push(adDiv);
       }
     }
 
-    // --- Actualizar todos los anuncios cada 10 segundos ---
-    setInterval(() => {
-      adContainers.forEach(adDiv => {
-        const ad = ads[Math.floor(Math.random() * ads.length)];
-        adDiv.innerHTML = `
-          <a href="${ad.url}" target="_blank">
-            <img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;">
-          </a>`;
-      });
-    }, 10000);
+    if (ads.length > 0) {
+      setInterval(() => {
+        adContainers.forEach(adDiv => {
+          const ad = ads[Math.floor(Math.random() * ads.length)];
+          adDiv.innerHTML = `<a href="${ad.url}" target="_blank"><img src="${ad.img}" alt="Publicidad" style="max-width:100%; border-radius:12px; margin:12px 0;"></a>`;
+        });
+      }, 10000);
+    }
 
   } catch (err) {
     console.error(err);
@@ -692,36 +627,33 @@ async function loadPosts() {
   }
 }
 
-
-  async function loadComments(postId, container) {
-    container.innerHTML = "Cargando comentarios...";
-    try {
-      const snap = await getDocs(query(
-        collection(db, "posts", postId, "comments"),
-        orderBy("createdAt", "asc")
-      ));
-      if (snap.empty) {
-        container.innerHTML = "<p class='muted'>Sin comentarios</p>";
-        return;
-      }
-      container.innerHTML = "";
-      snap.forEach(d => {
-        const c = d.data();
-        const div = document.createElement("div");
-        div.className = "comment";
-        div.innerHTML = `<strong>${c.author}</strong>: ${c.text}`;
-        container.appendChild(div);
-      });
-    } catch (err) {
-      console.error(err);
-      container.innerHTML = "<p class='muted'>Error cargando comentarios</p>";
+// === Comentarios ===
+async function loadComments(postId, container) {
+  container.innerHTML = "Cargando comentarios...";
+  try {
+    const snap = await getDocs(query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc")));
+    if (snap.empty) {
+      container.innerHTML = "<p class='muted'>Sin comentarios</p>";
+      return;
     }
+    container.innerHTML = "";
+    snap.forEach(d => {
+      const c = d.data();
+      const div = document.createElement("div");
+      div.className = "comment";
+      div.innerHTML = `<strong>${c.author}</strong>: ${c.text}`;
+      container.appendChild(div);
+    });
+  } catch {
+    container.innerHTML = "<p class='muted'>Error cargando comentarios</p>";
   }
+}
 
-  document.getElementById('btnLogout').addEventListener('click', async () => {
-    await signOut(auth);
-    location.href = "login.html";
-  });
+// === Logout ===
+document.getElementById('btnLogout').addEventListener('click', async () => {
+  await signOut(auth);
+  location.href = "login.html";
+});
 </script>
 <!-- Modal invitado -->
 <!-- Modal para invitados -->
@@ -744,23 +676,3 @@ async function loadPosts() {
 </style>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
